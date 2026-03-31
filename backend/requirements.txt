@@ -1,0 +1,17 @@
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.7.4
+pydantic-settings==2.3.4
+python-multipart==0.0.9
+pandas==3.0.1
+numpy==1.26.4
+yfinance==1.2.0
+statsmodels==0.14.6
+scipy==1.17.1
+pmdarima==2.0.4
+python-dotenv==1.0.1
+pywavelets==1.4.1
+arch==8.0.0
+darts==0.30.0
+pytorch-lightning==2.4.0
+torch>=2.0.0

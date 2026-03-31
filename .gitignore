@@ -1,0 +1,14 @@
+node_modules/
+.next/
+__pycache__/
+*.pyc
+venv/
+.env
+.env.local
+backend/.env
+frontend/.env.local
+darts_logs/
+lightning_logs/
+.DS_Store
+.vscode/
+.idea/
