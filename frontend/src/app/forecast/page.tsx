@@ -4,15 +4,17 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import Link from "next/link";
 import {
   TrendingUp, AlertCircle, Brain, Loader2, ChevronDown, ChevronUp,
-  ChevronsUpDown, LineChart as LineChartIcon,
+  ChevronsUpDown, LineChart as LineChartIcon, ChevronLeft, ChevronRight,
+  ZoomIn, ZoomOut, RotateCcw,
 } from "lucide-react";
 import {
   ResponsiveContainer, ComposedChart, LineChart, Line, Area, Bar, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, Legend,
+  XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ReferenceArea, Legend, Brush,
 } from "recharts";
 import { useCommodityStore } from "@/lib/store";
-import { runForecast } from "@/lib/api";
-import type { ForecastResult, ModelForecast } from "@/lib/types";
+import { runForecast, analyzeSMC } from "@/lib/api";
+import CandlestickSMC from "@/components/charts/CandlestickSMC";
+import type { ForecastResult, ModelForecast, SMCResult, CommodityDataset } from "@/lib/types";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -28,14 +30,7 @@ const MODEL_LABELS: Record<string, string> = {
   linear: "Linear Trend",
   hybrid_tft: "Hybrid TFT",
 };
-const HORIZON_PRESETS = [
-  { label: "1W", value: 7 },
-  { label: "2W", value: 14 },
-  { label: "1M", value: 30 },
-  { label: "2M", value: 60 },
-  { label: "3M", value: 90 },
-  { label: "6M", value: 180 },
-];
+
 const CONF_LEVELS = [
   { label: "90%", value: 0.9 },
   { label: "95%", value: 0.95 },
@@ -58,12 +53,139 @@ function fmtAxisDate(s: string) {
   const d = new Date(s);
   return isNaN(d.getTime()) ? s : d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
 }
+function formatXAxisTick(dateStr: string, interval: string): string {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  switch (interval) {
+    case "5m":
+    case "15m":
+    case "1h":
+      return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+    case "1mo":
+      return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+    default:
+      return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+}
+function formatTooltipDate(dateStr: string, interval: string): string {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  if (["5m", "15m", "1h"].includes(interval)) {
+    return d.toLocaleString("en-US", {
+      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
+    });
+  }
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
 function mapeColor(v: number) {
   if (v < 5) return "text-emerald-400";
   if (v < 10) return "text-amber-400";
   return "text-red-400";
 }
 function theilColor(v: number) { return v < 1 ? "text-emerald-400" : "text-red-400"; }
+
+function intervalLabel(interval: string): string {
+  switch (interval) {
+    case "5m":  return "5-min bar";
+    case "15m": return "15-min bar";
+    case "1h":  return "hourly bar";
+    case "1d":  return "day";
+    case "1wk": return "week";
+    case "1mo": return "month";
+    default:    return "period";
+  }
+}
+
+function intervalLabelPlural(interval: string, count: number): string {
+  const label = intervalLabel(interval);
+  return count === 1 ? `1 ${label}` : `${count.toLocaleString()} ${label}s`;
+}
+
+function horizonToRealTime(horizon: number, interval: string): string {
+  switch (interval) {
+    case "5m": {
+      const totalMin = horizon * 5;
+      const hours = Math.floor(totalMin / 60);
+      const mins = totalMin % 60;
+      return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    }
+    case "15m": {
+      const totalMin = horizon * 15;
+      const hours = Math.floor(totalMin / 60);
+      const mins = totalMin % 60;
+      return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    }
+    case "1h": {
+      if (horizon < 24) return `${horizon} hours`;
+      const days = Math.floor(horizon / 24);
+      const hrs = horizon % 24;
+      return hrs > 0 ? `${days}d ${hrs}h` : `${days} days`;
+    }
+    case "1d":  return `${horizon} days`;
+    case "1wk": return `${horizon} weeks`;
+    case "1mo": return `${horizon} months`;
+    default:    return `${horizon} periods`;
+  }
+}
+
+function getPresets(interval: string): { label: string; value: number }[] {
+  switch (interval) {
+    case "5m": return [
+      { label: "30m", value: 6 }, { label: "1h", value: 12 },
+      { label: "2h", value: 24 }, { label: "4h", value: 48 },
+      { label: "1D", value: 78 }, { label: "1W", value: 390 },
+    ];
+    case "15m": return [
+      { label: "1h", value: 4 }, { label: "2h", value: 8 },
+      { label: "4h", value: 16 }, { label: "1D", value: 26 },
+      { label: "1W", value: 130 },
+    ];
+    case "1h": return [
+      { label: "4h", value: 4 }, { label: "8h", value: 8 },
+      { label: "1D", value: 7 }, { label: "1W", value: 35 },
+      { label: "2W", value: 70 }, { label: "1M", value: 140 },
+    ];
+    default: return [
+      { label: "1W", value: 7 }, { label: "2W", value: 14 },
+      { label: "1M", value: 30 }, { label: "2M", value: 60 },
+      { label: "3M", value: 90 }, { label: "6M", value: 180 },
+    ];
+  }
+}
+
+function getZoomPresets(interval: string, histBars: number): { label: string; bars: number }[] {
+  switch (interval) {
+    case "5m":  return [{ label: "1h", bars: 12 }, { label: "4h", bars: 48 }, { label: "1D", bars: 78 }, { label: "All", bars: histBars }];
+    case "15m": return [{ label: "2h", bars: 8 }, { label: "1D", bars: 26 }, { label: "1W", bars: 130 }, { label: "All", bars: histBars }];
+    case "1h":  return [{ label: "1D", bars: 7 }, { label: "1W", bars: 35 }, { label: "1M", bars: 140 }, { label: "All", bars: histBars }];
+    default:    return [{ label: "1M", bars: 22 }, { label: "3M", bars: 65 }, { label: "1Y", bars: 252 }, { label: "All", bars: histBars }];
+  }
+}
+
+function getXAxisConfig(interval: string, visibleBars: number) {
+  const tickEvery = Math.max(1, Math.ceil(visibleBars / 20));
+  const xInterval = Math.max(0, tickEvery - 1);
+  const rotate = ["5m", "15m"].includes(interval) && visibleBars > 24;
+
+  const formatter = (s: string): string => {
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return s;
+    if (interval === "5m" || interval === "15m") {
+      if (visibleBars <= 48)
+        return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+      return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " +
+        d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+    }
+    if (interval === "1h") {
+      if (visibleBars <= 24) return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+      return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    }
+    if (visibleBars <= 90) return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+  };
+
+  return { xInterval, formatter, angle: rotate ? -45 : 0, textAnchor: (rotate ? "end" : "middle") as "end" | "middle", axisHeight: rotate ? 60 : 30 };
+}
 
 type SortKey = "mape" | "rmse" | "mae" | "theils_u" | "aic";
 type SortDir = "asc" | "desc";
@@ -446,29 +568,121 @@ function buildChartData(result: ForecastResult) {
 }
 
 function ForecastChart({ result, activeModels, showTrend = false }: { result: ForecastResult; activeModels: string[]; showTrend?: boolean }) {
-  const data = useMemo(() => buildChartData(result), [result]);
-  const lastHistDate = result.historical[result.historical.length - 1]?.date;
+  const fullData = useMemo(() => buildChartData(result), [result]);
+  const interval = result.interval ?? "1d";
+  const isIntraday = ["5m", "15m", "1h"].includes(interval);
+  const lastHistDate = result.historical[result.historical.length - 1]?.date ?? "";
   const splitDate = result.historical[result.train_size - 1]?.date;
+
+  const forecastStartIdx = useMemo(
+    () => fullData.findIndex((row) => String(row.date) > lastHistDate),
+    [fullData, lastHistDate],
+  );
+  const histCount = forecastStartIdx >= 0 ? forecastStartIdx : fullData.length;
+  const forecastStartDate = forecastStartIdx >= 0 ? String(fullData[forecastStartIdx].date) : undefined;
+  const forecastEndDate = fullData.length > 0 ? String(fullData[fullData.length - 1].date) : undefined;
+
+  const [brush, setBrush] = useState({ start: 0, end: fullData.length - 1 });
+  const endIdx = fullData.length - 1;
+  useEffect(() => { setBrush({ start: 0, end: endIdx }); }, [endIdx]);
+
+  const visibleCount = Math.max(1, brush.end - brush.start + 1);
+  const zoomPresets = useMemo(() => getZoomPresets(interval, histCount), [interval, histCount]);
+  const { xInterval, formatter: xFormatter, angle, textAnchor, axisHeight } = useMemo(
+    () => getXAxisConfig(interval, visibleCount),
+    [interval, visibleCount],
+  );
+
+  const applyPreset = (bars: number) =>
+    setBrush({ start: Math.max(0, histCount - bars), end: fullData.length - 1 });
+
+  const pan = (dir: 1 | -1) => {
+    const step = Math.max(1, Math.round(visibleCount * 0.1));
+    const spread = brush.end - brush.start;
+    const newStart = Math.max(0, Math.min(brush.start + dir * step, fullData.length - 1 - spread));
+    setBrush({ start: newStart, end: Math.min(fullData.length - 1, newStart + spread) });
+  };
+
+  const zoomIn = () => {
+    const delta = Math.max(1, Math.round(visibleCount * 0.125));
+    setBrush({ start: Math.min(brush.start + delta, brush.end - 2), end: Math.max(brush.end - delta, brush.start + 2) });
+  };
+
+  const zoomOut = () => {
+    const delta = Math.max(1, Math.round(visibleCount * 0.125));
+    setBrush({ start: Math.max(0, brush.start - delta), end: Math.min(fullData.length - 1, brush.end + delta) });
+  };
+
+  const reset = () => setBrush({ start: 0, end: fullData.length - 1 });
+
+  const dayBoundaries = useMemo(() => {
+    if (!isIntraday) return [];
+    return fullData.filter((_, i) => {
+      if (i === 0) return false;
+      const prev = new Date(String(fullData[i - 1].date));
+      const curr = new Date(String(fullData[i].date));
+      return prev.getDate() !== curr.getDate();
+    }).map((d) => String(d.date));
+  }, [fullData, isIntraday]);
+
+  const btnCls = "p-1.5 rounded border border-commodity-border bg-commodity-panel text-commodity-muted hover:text-commodity-text hover:border-slate-500 transition-colors";
 
   return (
     <div className="bg-commodity-card border border-commodity-border rounded-xl p-5">
-      <h3 className="text-sm font-semibold text-commodity-text mb-1">Forecast Chart</h3>
-      <p className="text-[11px] text-commodity-muted mb-4">
-        Historical · Backtest · {result.forecast_horizon}-day forecast — Dashed = forecast, Shaded = {Math.round(95)}% CI
-      </p>
-      <ResponsiveContainer width="100%" height={500}>
-        <ComposedChart data={data} margin={{ top: 12, right: 24, bottom: 24, left: 16 }}>
+      {/* Header + zoom controls */}
+      <div className="flex items-start justify-between gap-4 mb-3 flex-wrap">
+        <div>
+          <h3 className="text-sm font-semibold text-commodity-text">Forecast Chart</h3>
+          <p className="text-[11px] text-commodity-muted mt-0.5">
+            Historical · Backtest · {result.horizon_real_time ?? `${result.forecast_horizon} periods`} forecast — Dashed = forecast · Shaded = 95% CI
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] text-commodity-muted uppercase tracking-wider">Zoom:</span>
+          <div className="flex gap-1">
+            {zoomPresets.map((p) => (
+              <button key={p.label} onClick={() => applyPreset(p.bars)}
+                className="px-2 py-1 rounded text-[10px] font-mono font-medium border border-commodity-border bg-commodity-panel text-commodity-muted hover:text-commodity-text hover:bg-slate-700/40 transition-colors">
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-1">
+            <button onClick={() => pan(-1)} className={btnCls} title="Pan left"><ChevronLeft className="w-3 h-3" /></button>
+            <button onClick={() => pan(1)}  className={btnCls} title="Pan right"><ChevronRight className="w-3 h-3" /></button>
+            <button onClick={zoomIn}        className={btnCls} title="Zoom in"><ZoomIn className="w-3 h-3" /></button>
+            <button onClick={zoomOut}       className={btnCls} title="Zoom out"><ZoomOut className="w-3 h-3" /></button>
+            <button onClick={reset}         className={btnCls} title="Reset zoom"><RotateCcw className="w-3 h-3" /></button>
+          </div>
+        </div>
+      </div>
+
+      <ResponsiveContainer width="100%" height={520}>
+        <ComposedChart data={fullData} margin={{ top: 12, right: 24, bottom: 8, left: 16 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-          <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false}
-            tickFormatter={fmtAxisDate} minTickGap={60} />
+          <XAxis dataKey="date" tick={{ fill: "#94a3b8", fontSize: 10 }} axisLine={false} tickLine={false}
+            tickFormatter={xFormatter} interval={xInterval}
+            angle={angle} textAnchor={textAnchor} height={axisHeight} />
           <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={72}
             tickFormatter={(v: number) => v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toFixed(0)}`} />
+
+          {/* Forecast region highlight */}
+          {forecastStartDate && forecastEndDate && (
+            <ReferenceArea x1={forecastStartDate} x2={forecastEndDate}
+              fill="#f59e0b" fillOpacity={0.04} strokeOpacity={0} />
+          )}
+
+          {/* Intraday day-boundary vertical lines */}
+          {dayBoundaries.map((date) => (
+            <ReferenceLine key={`db_${date}`} x={date} stroke="#334155" strokeDasharray="3 3" strokeWidth={1} />
+          ))}
+
           {splitDate && <ReferenceLine x={splitDate} stroke="#64748b" strokeDasharray="4 4"
             label={{ value: "Train/Test", position: "top", fill: "#64748b", fontSize: 10 }} />}
           {lastHistDate && <ReferenceLine x={lastHistDate} stroke="#f59e0b" strokeDasharray="4 4"
             label={{ value: "Forecast →", position: "top", fill: "#f59e0b", fontSize: 10 }} />}
 
-          {/* Historical */}
+          {/* Historical actual */}
           <Line type="monotone" dataKey="actual" stroke="#64748b" strokeWidth={1.5} dot={false} isAnimationActive={false} name="Actual" />
 
           {/* Per-model: CI band + backtest dashed + forecast solid */}
@@ -500,7 +714,7 @@ function ForecastChart({ result, activeModels, showTrend = false }: { result: Fo
               const items = p.payload.filter((x) => x.value != null && !String(x.dataKey).startsWith("ci_"));
               return (
                 <div className="bg-[#0f172a] border border-slate-700 rounded-lg p-2.5 text-xs shadow-xl min-w-[160px]">
-                  <p className="text-slate-400 font-mono mb-2 pb-1 border-b border-slate-700/60">{p.label}</p>
+                  <p className="text-slate-400 font-mono mb-2 pb-1 border-b border-slate-700/60">{formatTooltipDate(p.label ?? "", interval)}</p>
                   {items.map((item) => (
                     <div key={item.dataKey} className="flex justify-between gap-3 mb-0.5">
                       <span style={{ color: item.color }}>{item.dataKey === "actual" ? "Actual" : item.dataKey.replace(/^(fc|bt)_/, "").toUpperCase()}</span>
@@ -511,7 +725,19 @@ function ForecastChart({ result, activeModels, showTrend = false }: { result: Fo
               );
             }}
           />
-          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
+          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
+
+          {/* Drag-to-zoom brush */}
+          <Brush dataKey="date" height={32} stroke="#334155" fill="#020617" travellerWidth={8}
+            tickFormatter={xFormatter}
+            startIndex={brush.start} endIndex={brush.end}
+            onChange={(range) => {
+              const r = range as { startIndex?: number; endIndex?: number };
+              if (r.startIndex != null && r.endIndex != null) {
+                setBrush({ start: r.startIndex, end: r.endIndex });
+              }
+            }}
+          />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -562,7 +788,16 @@ function ModelTable({ result }: { result: ForecastResult }) {
 
   return (
     <div className="bg-commodity-card border border-commodity-border rounded-xl p-5">
-      <h3 className="text-sm font-semibold text-commodity-text mb-4">Model Comparison</h3>
+      <h3 className="text-sm font-semibold text-commodity-text mb-1">
+        Model Comparison{" "}
+        <span className="text-[11px] text-commodity-muted font-normal">
+          —{" "}
+          {["5m", "15m", "1h"].includes(result.interval ?? "1d")
+            ? `${result.forecast_horizon} × ${intervalLabel(result.interval ?? "1d")}s (${result.horizon_real_time ?? ""})`
+            : (result.horizon_real_time ?? `${result.forecast_horizon} periods`)} forecast
+        </span>
+      </h3>
+      <div className="mb-4" />
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
@@ -633,6 +868,9 @@ function ModelTable({ result }: { result: ForecastResult }) {
 // ── Summary Cards ─────────────────────────────────────────────────────────────
 
 function SummaryCards({ result }: { result: ForecastResult }) {
+  const interval = result.interval ?? "1d";
+  const isIntraday = ["5m", "15m", "1h"].includes(interval);
+
   const ranked = useMemo(() => {
     const ok = result.models.filter((m) => !m.error && m.forecast_values.length > 0);
     return [...ok].sort((a, b) => a.backtest.metrics.mape - b.backtest.metrics.mape);
@@ -643,33 +881,56 @@ function SummaryCards({ result }: { result: ForecastResult }) {
   return (
     <div className="flex gap-4 overflow-x-auto pb-2">
       {ranked.map((m, i) => {
+        const firstFc = m.forecast_values[0];
         const lastFc = m.forecast_values[m.forecast_values.length - 1];
-        if (!lastFc) return null;
-        const change = lastFc.value - currentPrice;
-        const changePct = currentPrice > 0 ? (change / currentPrice) * 100 : 0;
+        if (!firstFc || !lastFc) return null;
+        const firstChange = firstFc.value - currentPrice;
+        const firstChangePct = currentPrice > 0 ? (firstChange / currentPrice) * 100 : 0;
+        const lastChange = lastFc.value - currentPrice;
+        const lastChangePct = currentPrice > 0 ? (lastChange / currentPrice) * 100 : 0;
         const color = MODEL_COLORS[m.model_name] ?? "#fff";
         const sparkValues = m.forecast_values.map((p) => p.value);
-        const isPos = change >= 0;
+        const isFirstPos = firstChange >= 0;
+        const isLastPos = lastChange >= 0;
         return (
           <div key={m.model_name}
-            className="flex-shrink-0 w-56 bg-commodity-card border border-commodity-border rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
+            className="flex-shrink-0 w-60 bg-commodity-card border border-commodity-border rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                <span className="text-xs font-semibold text-commodity-text truncate max-w-[110px]">{m.display_name}</span>
+                <span className="text-xs font-semibold text-commodity-text truncate max-w-[120px]">{m.display_name}</span>
               </div>
               <span className="text-sm">{RANK_MEDALS[i] ?? ""}</span>
             </div>
-            <p className="text-[10px] text-commodity-muted mb-1">Price in {result.forecast_horizon}d:</p>
-            <p className="font-mono text-lg font-bold text-commodity-text">{fmtPrice(lastFc.value)}</p>
-            <p className={`font-mono text-xs font-semibold mt-0.5 ${isPos ? "text-emerald-400" : "text-red-400"}`}>
-              {isPos ? "+" : ""}{fmtPrice(change)} ({isPos ? "+" : ""}{changePct.toFixed(2)}%)
+
+            {/* Primary: next bar (intraday) or terminal (daily) */}
+            <p className="text-[10px] text-commodity-muted mb-0.5">
+              {isIntraday ? "Next bar:" : `Price in ${result.horizon_real_time ?? `${result.forecast_horizon}d`}:`}
             </p>
-            {lastFc.ci_lower != null && lastFc.ci_upper != null && (
-              <p className="text-[10px] text-commodity-muted mt-1">
-                CI: {fmtPrice(lastFc.ci_lower)} — {fmtPrice(lastFc.ci_upper)}
+            <p className="font-mono text-lg font-bold text-commodity-text">{fmtPrice(firstFc.value)}</p>
+            <p className={`font-mono text-xs font-semibold mt-0.5 ${isFirstPos ? "text-emerald-400" : "text-red-400"}`}>
+              {isFirstPos ? "+" : ""}{fmtPrice(firstChange)} ({isFirstPos ? "+" : ""}{firstChangePct.toFixed(2)}%)
+            </p>
+            {firstFc.ci_lower != null && firstFc.ci_upper != null && (
+              <p className="text-[10px] text-commodity-muted mt-0.5">
+                CI: {fmtPrice(firstFc.ci_lower)} — {fmtPrice(firstFc.ci_upper)}
               </p>
             )}
+
+            {/* Secondary: terminal forecast for intraday only */}
+            {isIntraday && m.forecast_values.length > 1 && (
+              <>
+                <div className="border-t border-commodity-border/50 my-2" />
+                <p className="text-[10px] text-commodity-muted mb-0.5">
+                  Terminal ({result.forecast_horizon} bars):
+                </p>
+                <p className="font-mono text-sm font-semibold text-commodity-text">{fmtPrice(lastFc.value)}</p>
+                <p className={`font-mono text-[10px] font-medium ${isLastPos ? "text-emerald-400" : "text-red-400"}`}>
+                  {isLastPos ? "+" : ""}{fmtPrice(lastChange)} ({isLastPos ? "+" : ""}{lastChangePct.toFixed(2)}%)
+                </p>
+              </>
+            )}
+
             <div className="mt-2">
               <Sparkline values={sparkValues} color={color} />
             </div>
@@ -683,18 +944,32 @@ function SummaryCards({ result }: { result: ForecastResult }) {
 // ── Interpretation ─────────────────────────────────────────────────────────────
 
 function Interpretation({ result }: { result: ForecastResult }) {
+  const interval = result.interval ?? "1d";
+  const isIntraday = ["5m", "15m", "1h"].includes(interval);
   const best = result.models.find((m) => m.model_name === result.best_model);
   if (!best) return null;
+  const firstFc = best.forecast_values[0];
   const lastFc = best.forecast_values[best.forecast_values.length - 1];
   const currentPrice = result.historical[result.historical.length - 1]?.value ?? 0;
-  if (!lastFc) return null;
-  const direction = lastFc.value >= currentPrice ? "rise" : "fall";
+  if (!firstFc || !lastFc) return null;
+
+  const firstChange = ((firstFc.value - currentPrice) / currentPrice) * 100;
+  const direction = firstFc.value >= currentPrice ? "rise" : "fall";
   const spread = lastFc.ci_upper != null && lastFc.ci_lower != null
     ? lastFc.ci_upper - lastFc.ci_lower : null;
+  const realTime = result.horizon_real_time ?? `${result.forecast_horizon} periods`;
+  const barLabel = intervalLabelPlural(interval, result.forecast_horizon);
 
-  const lines = [
+  const lines = isIntraday ? [
     `${best.display_name} is the recommended model with the lowest MAPE of ${best.backtest.metrics.mape.toFixed(2)}%.`,
-    `The model forecasts ${result.dataset_name} to ${direction} to ${fmtPrice(lastFc.value)} over the next ${result.forecast_horizon} days.`,
+    `${best.display_name} forecasts the next ${intervalLabel(interval)} at ${fmtPrice(firstFc.value)} (${firstChange >= 0 ? "+" : ""}${firstChange.toFixed(2)}% ${direction}).`,
+    `Over ${barLabel} (${realTime}), the terminal forecast is ${fmtPrice(lastFc.value)}.`,
+    lastFc.ci_lower != null && lastFc.ci_upper != null
+      ? `Terminal 95% CI: ${fmtPrice(lastFc.ci_lower)} — ${fmtPrice(lastFc.ci_upper)}, a range of ${spread != null ? fmtPrice(spread) : "—"}.`
+      : null,
+  ].filter(Boolean) as string[] : [
+    `${best.display_name} is the recommended model with the lowest MAPE of ${best.backtest.metrics.mape.toFixed(2)}%.`,
+    `The model forecasts ${result.dataset_name} (${interval}) to ${direction} to ${fmtPrice(lastFc.value)} over the next ${realTime}.`,
     lastFc.ci_lower != null && lastFc.ci_upper != null
       ? `The 95% confidence interval at the forecast horizon is ${fmtPrice(lastFc.ci_lower)} — ${fmtPrice(lastFc.ci_upper)}, a range of ${spread != null ? fmtPrice(spread) : "—"}.`
       : null,
@@ -714,6 +989,274 @@ function Interpretation({ result }: { result: ForecastResult }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// ── SMC Section ───────────────────────────────────────────────────────────────
+
+type SMCToggles = {
+  swingPoints: boolean; structureLabels: boolean; breaks: boolean;
+  supplyDemand: boolean; liquidity: boolean; volume: boolean;
+};
+
+function SMCSection({
+  ds, smcResult, smcLoading, smcError, smcToggles, setSmcToggles,
+  visibleBars, setVisibleBars, swingSensitivity, setSwingSensitivity, onReanalyze,
+}: {
+  ds: CommodityDataset;
+  smcResult: SMCResult | null;
+  smcLoading: boolean;
+  smcError: string | null;
+  smcToggles: SMCToggles;
+  setSmcToggles: React.Dispatch<React.SetStateAction<SMCToggles>>;
+  visibleBars: number;
+  setVisibleBars: React.Dispatch<React.SetStateAction<number>>;
+  swingSensitivity: number;
+  setSwingSensitivity: React.Dispatch<React.SetStateAction<number>>;
+  onReanalyze: () => void;
+}) {
+  const hasOHLCV = ds.records.length > 0 && ds.records[0].open != null && ds.records[0].high != null;
+  const hasEnoughData = ds.records.length >= 50;
+
+  const TOGGLES: { key: keyof SMCToggles; label: string }[] = [
+    { key: "swingPoints",     label: "Swing Points" },
+    { key: "structureLabels", label: "Structure Labels" },
+    { key: "breaks",          label: "MSB / BOS" },
+    { key: "supplyDemand",    label: "Supply & Demand" },
+    { key: "liquidity",       label: "Liquidity" },
+    { key: "volume",          label: "Volume" },
+  ];
+
+  const summary      = smcResult?.summary;
+  const lastClose    = smcResult?.candles[smcResult.candles.length - 1]?.close;
+  const activeSupply = smcResult?.zones.filter(z => z.type === "supply" && z.strength !== "broken") ?? [];
+  const activeDemand = smcResult?.zones.filter(z => z.type === "demand" && z.strength !== "broken") ?? [];
+  const unsweptPools = smcResult?.liquidity_pools.filter(p => !p.swept) ?? [];
+  const lastBreak    = summary?.last_break;
+
+  const smcLines: string[] = smcResult && summary ? ([
+    `Market structure is ${summary.current_bias} based on recent ${summary.current_bias === "bullish" ? "HH/HL" : "LH/LL"} sequence.`,
+    lastBreak
+      ? `The most recent signal was a ${lastBreak.direction === "bullish" ? "Bullish" : "Bearish"} ${lastBreak.type} at ${fmtPrice(lastBreak.broken_level)} — this ${lastBreak.type === "MSB" ? "reverses" : "confirms"} the current trend.`
+      : null,
+    activeSupply.length > 0
+      ? `Key supply zone at ${fmtPrice(activeSupply[0].top)} (${activeSupply[0].strength}) — price may reject here.`
+      : null,
+    activeDemand.length > 0
+      ? `Key demand zone at ${fmtPrice(activeDemand[activeDemand.length - 1].top)} (${activeDemand[activeDemand.length - 1].strength}) — potential buying area.`
+      : null,
+    unsweptPools.length > 0
+      ? `${unsweptPools.length} unswept liquidity pool${unsweptPools.length > 1 ? "s" : ""} detected — these may act as price magnets.`
+      : null,
+  ].filter(Boolean) as string[]) : [];
+
+  return (
+    <div className="bg-commodity-card border border-commodity-border rounded-xl overflow-hidden">
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-commodity-border flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <span className="text-base">🏦</span>
+          <div>
+            <h3 className="text-sm font-semibold text-commodity-text">Smart Money Analysis — Market Structure &amp; Liquidity</h3>
+            <p className="text-[11px] text-commodity-muted">{ds.name} · {ds.records.length.toLocaleString()} bars · {ds.interval ?? "1d"}</p>
+          </div>
+        </div>
+        <button
+          onClick={onReanalyze}
+          disabled={!hasOHLCV || !hasEnoughData || smcLoading}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+        >
+          {smcLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+          Re-analyze
+        </button>
+      </div>
+
+      {!hasOHLCV ? (
+        <div className="px-6 py-12 text-center">
+          <AlertCircle className="w-10 h-10 text-commodity-muted/30 mx-auto mb-3" />
+          <p className="text-sm text-commodity-muted font-medium">SMC analysis requires OHLCV data (Open, High, Low, Close, Volume)</p>
+          <p className="text-xs text-commodity-muted/60 mt-1.5">Load a dataset with full OHLCV columns to enable this feature.</p>
+        </div>
+      ) : !hasEnoughData ? (
+        <div className="px-6 py-12 text-center">
+          <AlertCircle className="w-10 h-10 text-commodity-muted/30 mx-auto mb-3" />
+          <p className="text-sm text-commodity-muted font-medium">Not enough data for SMC analysis. Load at least 50 bars.</p>
+          <p className="text-xs text-commodity-muted/60 mt-1.5">Current dataset has {ds.records.length} bars.</p>
+        </div>
+      ) : (
+        <div className="p-6 space-y-5">
+          {/* Controls Bar */}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 py-3 px-4 bg-commodity-panel rounded-lg border border-commodity-border">
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {TOGGLES.map(({ key, label }) => {
+                const checked = smcToggles[key];
+                return (
+                  <label
+                    key={key}
+                    className="flex items-center gap-2 cursor-pointer select-none group"
+                    onClick={() => setSmcToggles(t => ({ ...t, [key]: !t[key] }))}
+                  >
+                    <div className={`w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0 border transition-colors ${checked ? "bg-amber-500 border-amber-500" : "border-commodity-border bg-commodity-card"}`}>
+                      {checked && <svg viewBox="0 0 10 8" className="w-2 h-2 fill-none stroke-slate-900 stroke-[1.5]"><path d="M1 4l3 3 5-6"/></svg>}
+                    </div>
+                    <span className="text-xs text-commodity-muted group-hover:text-commodity-text transition-colors">{label}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap gap-4 ml-auto items-center">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-commodity-muted whitespace-nowrap">Visible Bars</span>
+                <input type="range" min={50} max={Math.min(500, ds.records.length)} value={visibleBars}
+                  onChange={e => setVisibleBars(+e.target.value)} className="w-24 accent-amber-500" />
+                <span className="text-[11px] font-mono text-amber-400 w-9">{visibleBars}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-commodity-muted whitespace-nowrap">Swing Sensitivity</span>
+                <input type="range" min={2} max={10} value={swingSensitivity}
+                  onChange={e => setSwingSensitivity(+e.target.value)} className="w-16 accent-amber-500" />
+                <span className="text-[11px] font-mono text-amber-400 w-4">{swingSensitivity}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Loading */}
+          {smcLoading && (
+            <div className="flex flex-col items-center justify-center py-20 gap-3 bg-commodity-panel rounded-xl border border-commodity-border">
+              <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
+              <p className="text-sm text-commodity-muted">Detecting market structure &amp; liquidity pools…</p>
+            </div>
+          )}
+
+          {/* API Error */}
+          {smcError && !smcLoading && (
+            <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span>{smcError}</span>
+            </div>
+          )}
+
+          {/* Chart + Cards + Interpretation */}
+          {smcResult && !smcLoading && (
+            <>
+              <CandlestickSMC
+                data={smcResult}
+                height={500}
+                showSwingPoints={smcToggles.swingPoints}
+                showStructureLabels={smcToggles.structureLabels}
+                showBreaks={smcToggles.breaks}
+                showSupplyDemand={smcToggles.supplyDemand}
+                showLiquidity={smcToggles.liquidity}
+                showVolume={smcToggles.volume}
+              />
+
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                {/* Card 1: Bias */}
+                <div className="bg-commodity-panel border border-commodity-border rounded-xl p-4">
+                  <p className="text-[10px] text-commodity-muted uppercase tracking-wider mb-3">Current Bias</p>
+                  <div className={`flex items-baseline gap-2 ${summary!.current_bias === "bullish" ? "text-emerald-400" : "text-red-400"}`}>
+                    <span className="font-mono text-2xl font-bold uppercase">{summary!.current_bias}</span>
+                    <span className="text-2xl leading-none">{summary!.current_bias === "bullish" ? "↑" : "↓"}</span>
+                  </div>
+                  <p className="text-[11px] text-commodity-muted mt-2">Based on recent structure sequence</p>
+                  <div className="mt-3 flex gap-3 text-xs text-commodity-muted">
+                    <span>{summary!.total_swing_points} swings</span>
+                    <span>·</span>
+                    <span>{summary!.total_breaks} breaks</span>
+                  </div>
+                </div>
+
+                {/* Card 2: Key Levels */}
+                <div className="bg-commodity-panel border border-commodity-border rounded-xl p-4">
+                  <p className="text-[10px] text-commodity-muted uppercase tracking-wider mb-3">Key Levels</p>
+                  <div className="space-y-2">
+                    {summary!.nearest_supply != null && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-red-400">Nearest Supply</span>
+                        <span className="font-mono text-xs font-semibold text-red-400">{fmtPrice(summary!.nearest_supply)}</span>
+                      </div>
+                    )}
+                    {lastClose != null && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-commodity-muted">Current Price</span>
+                        <span className="font-mono text-xs font-semibold text-commodity-text">{fmtPrice(lastClose)}</span>
+                      </div>
+                    )}
+                    {summary!.nearest_demand != null && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-emerald-400">Nearest Demand</span>
+                        <span className="font-mono text-xs font-semibold text-emerald-400">{fmtPrice(summary!.nearest_demand)}</span>
+                      </div>
+                    )}
+                    {summary!.nearest_supply == null && summary!.nearest_demand == null && (
+                      <p className="text-xs text-commodity-muted">No active zones detected</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Card 3: Structure Breaks */}
+                <div className="bg-commodity-panel border border-commodity-border rounded-xl p-4">
+                  <p className="text-[10px] text-commodity-muted uppercase tracking-wider mb-3">Structure Breaks</p>
+                  {lastBreak ? (
+                    <div className="space-y-2">
+                      <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded ${lastBreak.type === "MSB" ? "bg-amber-500/20 text-amber-400" : "bg-slate-500/20 text-slate-400"}`}>
+                        {lastBreak.direction === "bullish" ? "Bullish" : "Bearish"} {lastBreak.type}
+                      </span>
+                      <p className="text-xs text-commodity-muted">at <span className="font-mono text-commodity-text">{fmtPrice(lastBreak.broken_level)}</span></p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-commodity-muted">No breaks detected</p>
+                  )}
+                  <div className="mt-3 flex gap-3 text-xs">
+                    <span><span className="font-mono text-amber-400">{summary!.msb_count}</span> <span className="text-commodity-muted">MSB</span></span>
+                    <span className="text-commodity-muted">·</span>
+                    <span><span className="font-mono text-slate-400">{summary!.bos_count}</span> <span className="text-commodity-muted">BOS</span></span>
+                  </div>
+                </div>
+
+                {/* Card 4: Liquidity */}
+                <div className="bg-commodity-panel border border-commodity-border rounded-xl p-4">
+                  <p className="text-[10px] text-commodity-muted uppercase tracking-wider mb-3">Liquidity Pools</p>
+                  <div className="flex items-baseline gap-1.5 mb-3">
+                    <span className="font-mono text-2xl font-bold text-amber-400">{summary!.unswept_liquidity}</span>
+                    <span className="text-xs text-commodity-muted">unswept pools</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {unsweptPools.slice(0, 2).map((p, i) => (
+                      <div key={i} className="flex justify-between items-center gap-2">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${p.type === "EQH" ? "bg-red-500/15 text-red-400" : "bg-emerald-500/15 text-emerald-400"}`}>
+                          {p.type}
+                        </span>
+                        <span className="font-mono text-[10px] text-commodity-text flex-1 text-right">{fmtPrice(p.price)}</span>
+                        <span className="text-[10px] text-commodity-muted">{p.num_touches}×</span>
+                      </div>
+                    ))}
+                    {unsweptPools.length === 0 && (
+                      <p className="text-xs text-commodity-muted">All pools swept</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* SMC Interpretation */}
+              {smcLines.length > 0 && (
+                <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-5">
+                  <h4 className="text-sm font-semibold text-commodity-text mb-3">SMC Interpretation</h4>
+                  <ul className="space-y-2">
+                    {smcLines.map((line, i) => (
+                      <li key={i} className="flex items-start gap-2.5 text-sm text-commodity-muted leading-relaxed">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400/60 shrink-0 mt-1.5" />
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -738,9 +1281,22 @@ export default function ForecastPage() {
   const chartRef = useRef<HTMLDivElement>(null);
   const tftTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
+  const [smcResult, setSmcResult] = useState<SMCResult | null>(null);
+  const [smcLoading, setSmcLoading] = useState(false);
+  const [smcError, setSmcError] = useState<string | null>(null);
+  const [smcToggles, setSmcToggles] = useState<SMCToggles>({
+    swingPoints: true, structureLabels: true, breaks: true,
+    supplyDemand: true, liquidity: true, volume: true,
+  });
+  const [visibleBars, setVisibleBars] = useState(200);
+  const [swingSensitivity, setSwingSensitivity] = useState(5);
+
   useEffect(() => { setMounted(true); }, []);
 
   const ds = useMemo(() => datasets.find((d) => d.id === selectedId), [datasets, selectedId]);
+  const interval = ds?.interval ?? "1d";
+  const presets = useMemo(() => getPresets(interval), [interval]);
+  const sliderMax = useMemo(() => Math.max(...presets.map((p) => p.value)), [presets]);
 
   const trainCount = useMemo(() => ds ? Math.floor(ds.records.length * split) : 0, [ds, split]);
   const testCount = useMemo(() => ds ? ds.records.length - trainCount : 0, [ds, trainCount]);
@@ -771,6 +1327,7 @@ export default function ForecastPage() {
         models,
         confidence_level: confLevel,
         train_test_split: split,
+        interval: ds.interval ?? "1d",
       });
       setResult(res);
       setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
@@ -785,6 +1342,45 @@ export default function ForecastPage() {
       setTftStep(0);
     }
   }, [ds, models, horizon, confLevel, split]);
+
+  const runSMCAnalysis = useCallback(async (dataset: CommodityDataset, lookback: number, bars: number) => {
+    setSmcLoading(true);
+    setSmcError(null);
+    setSmcResult(null);
+    try {
+      const res = await analyzeSMC({
+        name: dataset.name,
+        dates:   dataset.records.map(r => r.date),
+        opens:   dataset.records.map(r => r.open   ?? 0),
+        highs:   dataset.records.map(r => r.high   ?? 0),
+        lows:    dataset.records.map(r => r.low    ?? 0),
+        closes:  dataset.records.map(r => r.close),
+        volumes: dataset.records.map(r => r.volume ?? 0),
+        interval:      dataset.interval ?? "1d",
+        swing_lookback: lookback,
+        visible_bars:   bars,
+      });
+      setSmcResult(res);
+    } catch (e: unknown) {
+      setSmcError(e instanceof Error ? e.message : "SMC analysis failed.");
+    } finally {
+      setSmcLoading(false);
+    }
+  }, []);
+
+  const handleSMCAnalyze = useCallback(() => {
+    if (!ds) return;
+    runSMCAnalysis(ds, swingSensitivity, visibleBars);
+  }, [ds, runSMCAnalysis, swingSensitivity, visibleBars]);
+
+  useEffect(() => {
+    setSmcResult(null);
+    setSmcError(null);
+    if (!ds) return;
+    const hasOHLCV = ds.records.length > 0 && ds.records[0].open != null && ds.records[0].high != null;
+    if (!hasOHLCV || ds.records.length < 50) return;
+    runSMCAnalysis(ds, 5, 200);
+  }, [ds, runSMCAnalysis]);
 
   if (!mounted) return null;
 
@@ -831,12 +1427,17 @@ export default function ForecastPage() {
           {/* Horizon */}
           <div>
             <label className="block text-[11px] text-commodity-muted uppercase tracking-wider mb-2">
-              Forecast Horizon — <span className="text-amber-400 font-mono">{horizon} days</span>
+              Forecast Horizon —{" "}
+              <span className="text-amber-400 font-mono normal-case">
+                {["1d", "1wk", "1mo"].includes(interval)
+                  ? horizonToRealTime(horizon, interval)
+                  : `${horizon} bars (${horizonToRealTime(horizon, interval)})`}
+              </span>
             </label>
-            <input type="range" min={7} max={180} value={horizon} onChange={(e) => setHorizon(+e.target.value)}
+            <input type="range" min={1} max={sliderMax} value={horizon} onChange={(e) => setHorizon(+e.target.value)}
               className="w-full accent-amber-500 mb-3" />
             <div className="flex gap-1 flex-wrap">
-              {HORIZON_PRESETS.map((p) => (
+              {presets.map((p) => (
                 <button key={p.value} onClick={() => setHorizon(p.value)}
                   className={`px-2.5 py-1 rounded-md text-xs font-mono font-medium transition-colors ${horizon === p.value ? "bg-amber-500 text-slate-900" : "bg-commodity-panel border border-commodity-border text-commodity-muted hover:text-commodity-text"}`}>
                   {p.label}
@@ -883,8 +1484,8 @@ export default function ForecastPage() {
             <input type="range" min={0.6} max={0.9} step={0.05} value={split} onChange={(e) => setSplit(+e.target.value)}
               className="w-full accent-amber-500 mb-2" />
             <p className="text-xs text-commodity-muted font-mono">
-              Training: <span className="text-emerald-400">{trainCount.toLocaleString()} days</span>
-              {" "}· Testing: <span className="text-amber-400">{testCount.toLocaleString()} days</span>
+              Training: <span className="text-emerald-400">{intervalLabelPlural(interval, trainCount)}</span>
+              {" "}· Testing: <span className="text-amber-400">{intervalLabelPlural(interval, testCount)}</span>
             </p>
             <p className="text-[11px] text-commodity-muted mt-0.5">{Math.round(split * 100)}% / {Math.round((1 - split) * 100)}%</p>
           </div>
@@ -971,6 +1572,23 @@ export default function ForecastPage() {
           <SummaryCards result={result} />
           <Interpretation result={result} />
         </>
+      )}
+
+      {/* ── SMC Analysis ────────────────────────────────────────────────────── */}
+      {ds && (
+        <SMCSection
+          ds={ds}
+          smcResult={smcResult}
+          smcLoading={smcLoading}
+          smcError={smcError}
+          smcToggles={smcToggles}
+          setSmcToggles={setSmcToggles}
+          visibleBars={visibleBars}
+          setVisibleBars={setVisibleBars}
+          swingSensitivity={swingSensitivity}
+          setSwingSensitivity={setSwingSensitivity}
+          onReanalyze={handleSMCAnalyze}
+        />
       )}
     </div>
   );

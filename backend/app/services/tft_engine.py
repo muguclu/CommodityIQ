@@ -44,6 +44,7 @@ class TFTEngine:
         self.model = None
         self.scaler = None
         self.trained = False
+        self._last_trend_value: float = 0.0
         self._import_darts()
 
     def _import_darts(self):
@@ -98,19 +99,26 @@ class TFTEngine:
             .ffill()
         )
 
-        # Target series
-        target = self._TimeSeries.from_dataframe(df, value_cols=["trend"])
+        # ── KEY: Convert to FIRST DIFFERENCES ──────────────────────────────
+        # Training on diffs removes level dependency and makes the series
+        # stationary — TFT learns to predict daily CHANGES, not absolute levels.
+        df["trend_diff"] = df["trend"].diff()
+        df = df.dropna()  # Drop first row (NaN from diff)
 
-        # Past covariates: features derived from past values only
-        # (MA5, MA20, MA60, returns, volatility)
-        trend_series = df["trend"]
+        # Store last raw price for level reconstruction in forecast()
+        self._last_trend_value = float(trend_values[-1]) if len(trend_values) > 0 else 0.0
+
+        # Target: differenced trend (daily changes)
+        target = self._TimeSeries.from_dataframe(
+            df[["trend_diff"]], value_cols=["trend_diff"]
+        )
+
+        # Past covariates: diff-based features (MA, volatility, momentum)
         past_features = pd.DataFrame(index=df.index)
-        past_features["ma5_ratio"] = trend_series / trend_series.rolling(5).mean() - 1
-        past_features["ma20_ratio"] = trend_series / trend_series.rolling(20).mean() - 1
-        past_features["ma60_ratio"] = trend_series / trend_series.rolling(60).mean() - 1
-        past_features["return_1d"] = trend_series.pct_change(1)
-        past_features["return_5d"] = trend_series.pct_change(5)
-        past_features["volatility_20d"] = trend_series.pct_change().rolling(20).std()
+        past_features["ma5"] = df["trend_diff"].rolling(5).mean()
+        past_features["ma20"] = df["trend_diff"].rolling(20).mean()
+        past_features["volatility"] = df["trend_diff"].rolling(20).std()
+        past_features["momentum"] = df["trend_diff"].rolling(10).sum()
         past_features = past_features.fillna(0)
 
         past_covariates = self._TimeSeries.from_dataframe(
@@ -119,10 +127,7 @@ class TFTEngine:
             value_cols=list(past_features.columns),
         )
 
-        # Future covariates: calendar features (known in advance)
-        future_covariates = self._create_calendar_covariates(target)
-
-        return target, past_covariates, future_covariates
+        return target, past_covariates, None
 
     def _create_calendar_covariates(self, target) -> "TimeSeries":
         """Create calendar-based future covariates."""
@@ -258,28 +263,26 @@ class TFTEngine:
                 series=train_target,
                 past_covariates=past_cov[:train_size + pred_n],
             )
-            val_pred_inv = self.scaler.inverse_transform(val_pred)
-            val_actual_inv = self.scaler.inverse_transform(val_target)
+            val_pred_diffs = self.scaler.inverse_transform(val_pred).values().flatten()
+            val_actual_diffs = (
+                self.scaler.inverse_transform(val_target[:pred_n]).values().flatten()
+            )
 
-            val_pred_arr = val_pred_inv.values().flatten()
-            val_actual_arr = val_actual_inv.values().flatten()
-            min_len = min(len(val_pred_arr), len(val_actual_arr))
+            # Reconstruct absolute price levels from diffs for meaningful MAPE/RMSE.
+            # diff() loses the first element, so train_size diffs correspond to
+            # trend_values[0..train_size], making last_train_price = trend_values[train_size].
+            last_train_price = float(trend_values[train_size])
+            min_len = min(len(val_pred_diffs), len(val_actual_diffs))
 
+            val_pred_levels = np.cumsum(val_pred_diffs[:min_len]) + last_train_price
+            val_actual_levels = np.cumsum(val_actual_diffs[:min_len]) + last_train_price
+
+            safe_actual = np.where(val_actual_levels != 0, val_actual_levels, 1e-8)
             mape = float(
-                np.mean(
-                    np.abs(
-                        (val_actual_arr[:min_len] - val_pred_arr[:min_len])
-                        / val_actual_arr[:min_len]
-                    )
-                )
-                * 100
+                np.mean(np.abs((val_actual_levels - val_pred_levels) / safe_actual)) * 100
             )
             rmse = float(
-                np.sqrt(
-                    np.mean(
-                        (val_actual_arr[:min_len] - val_pred_arr[:min_len]) ** 2
-                    )
-                )
+                np.sqrt(np.mean((val_actual_levels - val_pred_levels) ** 2))
             )
 
             return {
@@ -357,13 +360,21 @@ class TFTEngine:
                     pad_ts = self._TimeSeries.from_dataframe(pad_df)
                     current_past_cov = current_past_cov.append(pad_ts)
 
-            # Concatenate and inverse transform
+            # Concatenate and inverse-transform diffs
             from darts import concatenate
 
             full_forecast = concatenate(forecasts)
-            forecast_inv = self.scaler.inverse_transform(full_forecast)
+            forecast_diffs = (
+                self.scaler.inverse_transform(full_forecast).values().flatten()
+            )
 
-            forecast_values = forecast_inv.values().flatten().tolist()
+            # ── Reconstruct absolute price levels from cumulative diffs ──
+            # Starts from the last known trend value captured in prepare_data().
+            last_price = self._last_trend_value
+            forecast_levels = []
+            for diff in forecast_diffs:
+                last_price = last_price + float(diff)
+                forecast_levels.append(last_price)
 
             # Generate future business dates
             last_date = pd.to_datetime(dates[-1])
@@ -378,7 +389,7 @@ class TFTEngine:
             )
 
             return {
-                "values": forecast_values[:horizon],
+                "values": forecast_levels[:horizon],
                 "dates": forecast_dates[:horizon],
             }
 

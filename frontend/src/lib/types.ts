@@ -182,6 +182,7 @@ export interface ForecastRequest {
   models?: string[];
   confidence_level?: number;
   train_test_split?: number;
+  interval?: string;
 }
 
 export interface ForecastPoint {
@@ -253,6 +254,8 @@ export interface ForecastResult {
   train_size: number;
   test_size: number;
   forecast_horizon: number;
+  interval?: string;
+  horizon_real_time?: string;
 }
 
 // ── Rolling Regression ────────────────────────────────────────────────────────
@@ -553,4 +556,101 @@ export interface ReplayResult {
     actual_return: number;
     difference: number;
   } | null;
+}
+
+// ── SMC (Smart Money Concepts) ────────────────────────────────────────────────
+
+export interface SMCCandle {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface SwingPoint {
+  index: number;
+  date: string;
+  price: number;
+  type: "high" | "low";
+  strength: number;
+}
+
+export interface StructurePoint {
+  index: number;
+  date: string;
+  price: number;
+  label: "HH" | "HL" | "LH" | "LL";
+  trend: "bullish" | "bearish";
+}
+
+export interface StructureBreak {
+  index: number;
+  date: string;
+  price: number;
+  type: "BOS" | "MSB";
+  direction: "bullish" | "bearish";
+  broken_level: number;
+  description: string;
+}
+
+export interface SDZone {
+  start_index: number;
+  end_index: number;
+  start_date: string;
+  end_date: string;
+  top: number;
+  bottom: number;
+  type: "supply" | "demand";
+  strength: "fresh" | "tested" | "broken";
+  origin_candle: { date: string; open: number; high: number; low: number; close: number };
+}
+
+export interface LiquidityPool {
+  index: number;
+  date: string;
+  price: number;
+  type: "EQH" | "EQL" | "BSL" | "SSL";
+  num_touches: number;
+  swept: boolean;
+  swept_date: string | null;
+}
+
+export interface SMCSummary {
+  current_bias: "bullish" | "bearish";
+  total_swing_points: number;
+  total_breaks: number;
+  msb_count: number;
+  bos_count: number;
+  active_supply_zones: number;
+  active_demand_zones: number;
+  unswept_liquidity: number;
+  nearest_supply: number | null;
+  nearest_demand: number | null;
+  last_break: StructureBreak | null;
+}
+
+export interface SMCRequest {
+  name: string;
+  dates: string[];
+  opens: number[];
+  highs: number[];
+  lows: number[];
+  closes: number[];
+  volumes: number[];
+  interval: string;
+  swing_lookback?: number;
+  visible_bars?: number;
+}
+
+export interface SMCResult {
+  candles: SMCCandle[];
+  swing_points: SwingPoint[];
+  structure: StructurePoint[];
+  breaks: StructureBreak[];
+  zones: SDZone[];
+  liquidity_pools: LiquidityPool[];
+  summary: SMCSummary;
+  interval?: string;
 }

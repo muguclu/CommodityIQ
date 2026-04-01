@@ -175,6 +175,7 @@ class ForecastRequest(BaseModel):
     models: List[str] = ["arima", "ets", "linear"]
     confidence_level: float = 0.95
     train_test_split: float = 0.8
+    interval: str = "1d"
 
 
 class ForecastPoint(BaseModel):
@@ -219,6 +220,8 @@ class ForecastResult(BaseModel):
     train_size: int
     test_size: int
     forecast_horizon: int
+    interval: str = "1d"
+    horizon_real_time: Optional[str] = None
 
 
 # ── Analytics — Rolling Regression ────────────────────────────────────────────
@@ -353,3 +356,16 @@ class ReplayResult(BaseModel):
     simulated: ScenarioResult
     actual_path: Optional[List[dict]] = None
     simulated_vs_actual: Optional[dict] = None
+
+
+class SMCRequest(BaseModel):
+    name: str
+    dates: List[str]
+    opens: List[float]
+    highs: List[float]
+    lows: List[float]
+    closes: List[float]
+    volumes: List[float]
+    interval: str = "1d"
+    swing_lookback: int = 5
+    visible_bars: int = 200

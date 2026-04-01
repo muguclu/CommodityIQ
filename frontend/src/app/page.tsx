@@ -291,8 +291,19 @@ export default function DashboardPage() {
   const [indexTo100, setIndexTo100] = useState(false);
   const [logScale, setLogScale]     = useState(false);
   const [chartRange, setChartRange] = useState<RangePill>("All");
+  const [rightAxisIds, setRightAxisIds] = useState<Set<string>>(new Set());
+  const [suggestion, setSuggestion] = useState<string | null>(null);
 
   useEffect(() => { setMounted(true); }, []);
+
+  function toggleAxis(id: string) {
+    if (indexTo100) return;
+    setRightAxisIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   // ── Derived state ────────────────────────────────────────────────────────
 
@@ -313,6 +324,29 @@ export default function DashboardPage() {
     return result;
   }, [activeDatasets, chartRange]);
 
+  useEffect(() => {
+    if (indexTo100 || activeDatasets.length < 2) { setSuggestion(null); return; }
+    const latest = activeDatasets.map((ds) => {
+      const recs = filteredMap[ds.id] ?? [];
+      return { id: ds.id, name: ds.name, close: recs.length > 0 ? recs[recs.length - 1].close : 0 };
+    }).filter((x) => x.close > 0);
+    if (latest.length < 2) { setSuggestion(null); return; }
+    const maxClose = Math.max(...latest.map((x) => x.close));
+    const minClose = Math.min(...latest.map((x) => x.close));
+    if (maxClose / minClose > 10) {
+      const outlier = latest.find(
+        (x) => !rightAxisIds.has(x.id) && (x.close === maxClose || x.close === minClose)
+      );
+      setSuggestion(
+        outlier
+          ? `${outlier.name} has a very different price scale. Consider moving it to the right axis (R badge) for better visibility.`
+          : null
+      );
+    } else {
+      setSuggestion(null);
+    }
+  }, [activeDatasets, filteredMap, indexTo100, rightAxisIds]);
+
   const spanDays = useMemo(() => {
     const min = getMinDate(chartRange);
     if (!min) {
@@ -324,12 +358,7 @@ export default function DashboardPage() {
     return (Date.now() - min.getTime()) / 86_400_000;
   }, [chartRange, filteredMap]);
 
-  const useDualAxis = useMemo(() => {
-    if (indexTo100 || activeDatasets.length < 2) return false;
-    const closes = Object.values(filteredMap).flat().map((r) => r.close).filter((v) => v > 0);
-    if (closes.length === 0) return false;
-    return Math.max(...closes) / Math.min(...closes) > 20;
-  }, [activeDatasets, filteredMap, indexTo100]);
+  const hasRightAxis = !indexTo100 && rightAxisIds.size > 0;
 
   const chartData = useMemo(() => {
     if (activeDatasets.length === 0) return [];
@@ -366,9 +395,9 @@ export default function DashboardPage() {
   // ── Chart series builder ─────────────────────────────────────────────────
 
   const buildSeries = (type: "line" | "area") =>
-    activeDatasets.map((ds, i) => {
+    activeDatasets.map((ds) => {
       const color   = colorMap[ds.id];
-      const yAxisId = useDualAxis && i >= 4 ? "right" : "left";
+      const yAxisId = hasRightAxis && rightAxisIds.has(ds.id) ? "right" : "left";
       const common  = {
         key: ds.id,
         type: "monotone" as const,
@@ -409,12 +438,12 @@ export default function DashboardPage() {
         domain={logScale ? ["auto", "auto"] : undefined}
         width={70}
       />
-      {useDualAxis && (
+      {hasRightAxis && (
         <YAxis
           yAxisId="right"
           orientation="right"
           tickFormatter={(v: number) => fmtAxisPrice(v, indexTo100)}
-          tick={{ fontSize: 10, fill: "#94a3b8" }}
+          tick={{ fontSize: 10, fill: "#f59e0b" }}
           axisLine={false}
           tickLine={false}
           width={70}
@@ -469,6 +498,31 @@ export default function DashboardPage() {
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
                       <span className="whitespace-nowrap">{ds.name}</span>
                     </button>
+                    {isActive && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleAxis(ds.id); }}
+                        disabled={indexTo100}
+                        title={
+                          indexTo100
+                            ? "Axis toggle disabled in Index mode"
+                            : rightAxisIds.has(ds.id)
+                            ? `Move ${ds.name} to left axis`
+                            : `Move ${ds.name} to right axis`
+                        }
+                        className={`min-w-[18px] min-h-[18px] flex items-center justify-center rounded text-[9px] font-bold transition-colors ${
+                          indexTo100
+                            ? "opacity-30 cursor-not-allowed"
+                            : "cursor-pointer"
+                        } ${
+                          rightAxisIds.has(ds.id)
+                            ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                            : "bg-slate-700/60 text-slate-400 border border-slate-600/40 hover:bg-slate-600/60 hover:text-slate-300"
+                        }`}
+                        aria-label={`Toggle Y-axis for ${ds.name}`}
+                      >
+                        {rightAxisIds.has(ds.id) ? "R" : "L"}
+                      </button>
+                    )}
                     <button
                       onClick={() => removeDataset(ds.id)}
                       className="ml-0.5 p-0.5 rounded-full text-slate-500 hover:text-slate-300 hover:bg-slate-700 transition-colors"
@@ -481,6 +535,21 @@ export default function DashboardPage() {
               })}
             </div>
           </div>
+
+          {/* Axis suggestion toast */}
+          {suggestion && !indexTo100 && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400/90">
+              <span className="shrink-0">&#x1F4A1;</span>
+              <span className="flex-1">{suggestion}</span>
+              <button
+                onClick={() => setSuggestion(null)}
+                className="ml-auto p-0.5 rounded-full hover:bg-amber-500/20 transition-colors shrink-0"
+                aria-label="Dismiss suggestion"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
 
           {/* B — Chart controls */}
           {activeDatasets.length > 0 && (
@@ -525,7 +594,12 @@ export default function DashboardPage() {
 
               <ToggleSwitch
                 on={indexTo100}
-                onToggle={() => { setIndexTo100(!indexTo100); setLogScale(false); }}
+                onToggle={() => {
+                  const turningOn = !indexTo100;
+                  setIndexTo100(turningOn);
+                  setLogScale(false);
+                  if (turningOn) { setRightAxisIds(new Set()); setSuggestion(null); }
+                }}
                 label="Index to 100"
               />
               <ToggleSwitch
@@ -533,6 +607,9 @@ export default function DashboardPage() {
                 onToggle={() => { setLogScale(!logScale); setIndexTo100(false); }}
                 label="Log Scale"
               />
+              {indexTo100 && (
+                <span className="text-[10px] text-slate-500 italic">Axis toggle disabled in Index mode</span>
+              )}
             </div>
           )}
 
@@ -549,12 +626,12 @@ export default function DashboardPage() {
             ) : (
               <ResponsiveContainer width="100%" height={450}>
                 {chartType === "area" ? (
-                  <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <AreaChart data={chartData} margin={{ top: 4, right: hasRightAxis ? 4 : 8, left: 0, bottom: 0 }}>
                     {commonAxes}
                     {buildSeries("area")}
                   </AreaChart>
                 ) : (
-                  <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <LineChart data={chartData} margin={{ top: 4, right: hasRightAxis ? 4 : 8, left: 0, bottom: 0 }}>
                     {commonAxes}
                     {buildSeries("line")}
                   </LineChart>

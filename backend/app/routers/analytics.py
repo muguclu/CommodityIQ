@@ -3,6 +3,7 @@ import warnings
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 from app.services.hybrid_forecast import HybridForecaster
+from app.services.smc_engine import SMCEngine
 
 import numpy as np
 import statsmodels.api as sm
@@ -36,6 +37,7 @@ from app.models.schemas import (
     StepwiseStep,
     StructuralBreakRequest,
     StructuralBreakResult,
+    SMCRequest,
 )
 
 router = APIRouter(tags=["analytics"])
@@ -392,19 +394,56 @@ def _backtest_metrics(actual: np.ndarray, predicted: np.ndarray) -> BacktestMetr
     return BacktestMetrics(mape=mape, rmse=rmse, mae=mae, theils_u=theils_u)
 
 
-def _future_dates(last_date: str, horizon: int) -> List[str]:
-    """Generate `horizon` business-day-like ISO date strings after last_date."""
-    from datetime import date, timedelta
+def _future_dates(last_date: str, horizon: int, interval: str = "1d") -> List[str]:
+    """Generate future date strings based on data interval."""
+    import pandas as pd
     try:
-        base = date.fromisoformat(last_date[:10])
-    except ValueError:
-        base = date.today()
-    dates: List[str] = []
-    current = base
-    while len(dates) < horizon:
-        current += timedelta(days=1)
-        dates.append(current.isoformat())
-    return dates
+        last_dt = pd.to_datetime(last_date)
+    except Exception:
+        last_dt = pd.Timestamp.today()
+
+    if interval == "5m":
+        dates = pd.date_range(start=last_dt + pd.Timedelta(minutes=5), periods=horizon * 5, freq="5min")
+        dates = dates[(dates.weekday < 5) & (dates.hour >= 8) & (dates.hour < 17)][:horizon]
+    elif interval == "15m":
+        dates = pd.date_range(start=last_dt + pd.Timedelta(minutes=15), periods=horizon * 5, freq="15min")
+        dates = dates[(dates.weekday < 5) & (dates.hour >= 8) & (dates.hour < 17)][:horizon]
+    elif interval == "1h":
+        dates = pd.date_range(start=last_dt + pd.Timedelta(hours=1), periods=horizon * 5, freq="h")
+        dates = dates[(dates.weekday < 5) & (dates.hour >= 8) & (dates.hour < 17)][:horizon]
+    elif interval == "1wk":
+        dates = pd.bdate_range(start=last_dt + pd.Timedelta(days=1), periods=horizon, freq="W-FRI")
+    elif interval == "1mo":
+        dates = pd.bdate_range(start=last_dt + pd.Timedelta(days=1), periods=horizon, freq="BME")
+    else:  # "1d" default
+        dates = pd.bdate_range(start=last_dt + pd.Timedelta(days=1), periods=horizon, freq="B")
+
+    fmt = "%Y-%m-%dT%H:%M:%S" if interval in ("5m", "15m", "1h") else "%Y-%m-%d"
+    return [d.strftime(fmt) for d in dates[:horizon]]
+
+
+def _horizon_to_real_time(horizon: int, interval: str) -> str:
+    """Convert horizon (number of bars) to human-readable real time duration."""
+    if interval == "5m":
+        total_min = horizon * 5
+        hours, mins = divmod(total_min, 60)
+        return f"{hours}h {mins}m" if mins else f"{hours}h"
+    elif interval == "15m":
+        total_min = horizon * 15
+        hours, mins = divmod(total_min, 60)
+        return f"{hours}h {mins}m" if mins else f"{hours}h"
+    elif interval == "1h":
+        if horizon < 24:
+            return f"{horizon}h"
+        days, hrs = divmod(horizon, 24)
+        return f"{days}d {hrs}h" if hrs else f"{days}d"
+    elif interval == "1d":
+        return f"{horizon} days"
+    elif interval == "1wk":
+        return f"{horizon} weeks"
+    elif interval == "1mo":
+        return f"{horizon} months"
+    return f"{horizon} periods"
 
 
 def _run_arima(
@@ -789,7 +828,7 @@ def run_forecast(req: ForecastRequest) -> ForecastResult:
         train_vals = train_vals[:-5]
         train_dates_list = train_dates_list[:-5]
 
-    future_date_list = _future_dates(dates_arr[-1], req.horizon)
+    future_date_list = _future_dates(dates_arr[-1], req.horizon, req.interval)
 
     historical = [
         ForecastPoint(date=str(d), value=float(v))
@@ -927,6 +966,8 @@ def run_forecast(req: ForecastRequest) -> ForecastResult:
         train_size=len(train_vals),
         test_size=len(test_vals),
         forecast_horizon=req.horizon,
+        interval=req.interval,
+        horizon_real_time=_horizon_to_real_time(req.horizon, req.interval),
     )
 
 
@@ -1095,3 +1136,32 @@ async def structural_breaks(req: StructuralBreakRequest):
         dependent_name=req.dependent.get("name", "Y"),
         independent_name=req.independent.get("name", "X"),
     )
+
+
+# ── POST /smc ──────────────────────────────────────────────────────────────────
+
+@router.post("/smc")
+def run_smc(req: SMCRequest) -> dict:
+    if len(req.dates) < 50:
+        raise HTTPException(status_code=400, detail="SMC analysis requires at least 50 bars of OHLCV data.")
+    lengths = {len(req.dates), len(req.opens), len(req.highs), len(req.lows), len(req.closes), len(req.volumes)}
+    if len(lengths) != 1:
+        raise HTTPException(status_code=400, detail="All OHLCV arrays must have the same length.")
+
+    df = pd.DataFrame({
+        "date":   req.dates,
+        "open":   req.opens,
+        "high":   req.highs,
+        "low":    req.lows,
+        "close":  req.closes,
+        "volume": req.volumes,
+    })
+
+    if req.visible_bars > 0 and len(df) > req.visible_bars:
+        df = df.tail(req.visible_bars).reset_index(drop=True)
+
+    engine = SMCEngine(swing_lookback=req.swing_lookback)
+    result = engine.analyze(df)
+    result["candles"] = df.to_dict(orient="records")
+    result["interval"] = req.interval
+    return result

@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { CommodityDataset, CommodityInfo, FetchMarketRequest, FetchMarketResponse, ForecastRequest, ForecastResult, HistoricalEvent, RegressionRequest, RegressionResult, ReplayRequest, ReplayResult, RiskMetricsRequest, RiskMetricsResult, RollingRegressionRequest, RollingRegressionResult, ScenarioCompareRequest, ScenarioCompareResult, ScenarioRequest, ScenarioResult, SensitivityRequest, SensitivityResult, StepwiseRequest, StepwiseResult, StructuralBreakRequest, StructuralBreakResult } from "./types";
+import type { CommodityDataset, CommodityInfo, FetchMarketRequest, FetchMarketResponse, ForecastRequest, ForecastResult, HistoricalEvent, RegressionRequest, RegressionResult, ReplayRequest, ReplayResult, RiskMetricsRequest, RiskMetricsResult, RollingRegressionRequest, RollingRegressionResult, ScenarioCompareRequest, ScenarioCompareResult, ScenarioRequest, ScenarioResult, SensitivityRequest, SensitivityResult, SMCRequest, SMCResult, StepwiseRequest, StepwiseResult, StructuralBreakRequest, StructuralBreakResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -90,5 +90,10 @@ export async function replayEvent(request: ReplayRequest): Promise<ReplayResult>
 
 export async function calculateRiskMetrics(request: RiskMetricsRequest): Promise<RiskMetricsResult> {
   const { data } = await api.post<RiskMetricsResult>("/api/analytics/scenario/risk-metrics", request);
+  return data;
+}
+
+export async function analyzeSMC(request: SMCRequest): Promise<SMCResult> {
+  const { data } = await api.post<SMCResult>("/api/analytics/smc", request);
   return data;
 }
