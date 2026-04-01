@@ -644,6 +644,174 @@ export interface SMCRequest {
   visible_bars?: number;
 }
 
+export interface AIChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  tool_calls?: AIToolCall[];
+  timestamp?: string;
+  iterations?: number;
+  elapsed_ms?: number;
+}
+
+export interface AIToolCall {
+  tool_name: string;
+  tool_input: Record<string, unknown>;
+  tool_result_summary: Record<string, unknown>;
+}
+
+export interface ChatRequest {
+  messages: AIChatMessage[];
+  available_datasets: Array<{ name: string; ticker?: string; rows: number; date_range: string }>;
+  dataset_data: Record<string, { dates: string[]; values: number[] }>;
+  active_dataset_names: string[];
+}
+
+export interface ChatResponse {
+  response: string;
+  tool_calls: AIToolCall[];
+  model: string;
+  iterations?: number;
+}
+
+export interface SeasonalSignalRequest {
+  name: string;
+  dates: string[];
+  values: number[];
+  positive_threshold?: number;
+  negative_threshold?: number;
+  min_years?: number;
+}
+
+export interface CalendarSignal {
+  month: number;
+  month_name: string;
+  signal: "strong" | "weak" | "neutral";
+  avg_return: number;
+  positive_pct: number;
+  confidence: "high" | "low";
+}
+
+export interface StrategyMetrics {
+  annual_return: number;
+  annual_volatility: number;
+  sharpe_ratio: number;
+  sortino_ratio: number;
+  max_drawdown: number;
+  win_rate: number;
+  total_return: number;
+  num_trades: number;
+}
+
+export interface SeasonalSignalResult {
+  strong_months: number[];
+  weak_months: number[];
+  neutral_months: number[];
+  calendar_signals: CalendarSignal[];
+  equity_curves: {
+    dates: string[];
+    seasonal_strategy: number[];
+    buy_and_hold: number[];
+  };
+  seasonal_metrics: StrategyMetrics;
+  buyhold_metrics: StrategyMetrics;
+  strategy_description: string;
+  outperformance: number;
+  dataset_name: string;
+}
+
+export interface YoYRequest {
+  name: string;
+  dates: string[];
+  values: number[];
+  years_to_show?: number;
+  normalize?: boolean;
+}
+
+export interface YoYYearSummary {
+  year: number;
+  ytd_return: number;
+  max_value: number;
+  min_value: number;
+  final_value: number;
+  trading_days: number;
+}
+
+export interface YoYMeanBandEntry {
+  trading_day: number;
+  mean: number;
+  std: number;
+  upper: number;
+  lower: number;
+}
+
+export interface YoYResult {
+  years_data: Record<string, { trading_day: number; value: number }[]>;
+  mean_band: YoYMeanBandEntry[];
+  current_year: number;
+  normalized: boolean;
+  dataset_name: string;
+  year_summaries: YoYYearSummary[];
+}
+
+export interface SeasonalityRequest {
+  name: string;
+  dates: string[];
+  values: number[];
+  period?: number;
+  frequency?: string;
+}
+
+export interface MonthlyStatEntry {
+  month: number;
+  month_name: string;
+  mean_return: number;
+  median_return: number;
+  std_return: number;
+  positive_pct: number;
+  count: number;
+  best_year:  { year: number; return: number } | null;
+  worst_year: { year: number; return: number } | null;
+}
+
+export interface DayOfWeekEntry {
+  day: number;
+  day_name: string;
+  mean_return: number;
+  std_return: number;
+  positive_pct: number;
+  count: number;
+}
+
+export interface WeeklyPatternEntry {
+  week: number;
+  mean_return: number;
+  std: number;
+  count: number;
+}
+
+export interface SeasonalityResult {
+  decomposition: {
+    dates:    string[];
+    observed: (number | null)[];
+    trend:    (number | null)[];
+    seasonal: (number | null)[];
+    residual: (number | null)[];
+  };
+  seasonal_strength: number;
+  seasonal_strength_label: string;
+  monthly_stats: MonthlyStatEntry[];
+  monthly_matrix: {
+    years:  number[];
+    months: string[];
+    values: (number | null)[][];
+  };
+  day_of_week: DayOfWeekEntry[];
+  weekly_pattern: WeeklyPatternEntry[];
+  dataset_name: string;
+  period_analyzed: string;
+  total_years: number;
+}
+
 export interface SMCResult {
   candles: SMCCandle[];
   swing_points: SwingPoint[];
@@ -653,4 +821,186 @@ export interface SMCResult {
   liquidity_pools: LiquidityPool[];
   summary: SMCSummary;
   interval?: string;
+}
+
+export interface CorrelationRequest {
+  datasets: Array<{ name: string; dates: string[]; values: number[] }>;
+  method?: "pearson" | "spearman";
+  use_returns?: boolean;
+  period?: "full" | "1y" | "2y" | "3y" | "ytd";
+}
+
+export interface CorrelationPair {
+  pair: string;
+  asset_a: string;
+  asset_b: string;
+  correlation: number;
+  p_value: number;
+  significant: boolean;
+}
+
+export interface CorrelationResult {
+  correlation_matrix: { columns: string[]; values: number[][] };
+  p_value_matrix: { columns: string[]; values: number[][] };
+  method: string;
+  used_returns: boolean;
+  num_observations: number;
+  period_start: string;
+  period_end: string;
+  top_correlations: CorrelationPair[];
+  bottom_correlations: CorrelationPair[];
+  pca_summary: {
+    eigenvalues: number[];
+    explained_variance_pct: number[];
+    first_component_explains: number;
+    interpretation: string;
+  };
+}
+
+export interface RollingCorrelationRequest {
+  asset_a: { name: string; dates: string[]; values: number[] };
+  asset_b: { name: string; dates: string[]; values: number[] };
+  window_sizes?: number[];
+  use_returns?: boolean;
+}
+
+export interface RollingCorrelationPoint {
+  date: string;
+  correlation: number;
+}
+
+export interface RollingCorrelationResult {
+  asset_a_name: string;
+  asset_b_name: string;
+  rolling_data: Record<string, RollingCorrelationPoint[]>;
+  historical_stats: {
+    mean: number;
+    std: number;
+    min: number;
+    max: number;
+    current: number;
+    percentile_current: number;
+  };
+  regimes: Array<{
+    start: string;
+    end: string;
+    avg_correlation: number;
+    regime: "high" | "medium" | "low";
+  }>;
+}
+
+export interface GrangerRequest {
+  datasets: Array<{ name: string; dates: string[]; values: number[] }>;
+  max_lag?: number;
+  significance?: number;
+}
+
+export interface GrangerPairResult {
+  cause: string;
+  effect: string;
+  best_lag: number;
+  f_statistic: number;
+  p_value: number;
+  significant: boolean;
+  direction: string;
+  error?: string;
+}
+
+export interface GrangerResult {
+  results: GrangerPairResult[];
+  significant_pairs: GrangerPairResult[];
+  network: {
+    nodes: string[];
+    edges: Array<{ from: string; to: string; lag: number; strength: number }>;
+  };
+  max_lag_tested: number;
+  significance_level: number;
+}
+
+export interface RegimeScatterRequest {
+  asset_a: { name: string; dates: string[]; values: number[] };
+  asset_b: { name: string; dates: string[]; values: number[] };
+  regime_window?: number;
+  num_regimes?: number;
+}
+
+export interface RegimeScatterPoint {
+  x: number;
+  y: number;
+  date: string;
+  regime: "Low" | "Medium" | "High";
+}
+
+export interface RegimeStats {
+  correlation: number;
+  p_value: number;
+  num_observations: number;
+  pct_of_total: number;
+}
+
+export interface RegimeRegression {
+  slope: number;
+  intercept: number;
+  r_squared: number;
+}
+
+export interface RegimeScatterResult {
+  scatter_data: RegimeScatterPoint[];
+  regime_correlations: Record<string, RegimeStats>;
+  regime_regressions: Record<string, RegimeRegression>;
+  regime_thresholds: { low_vol: number; high_vol: number };
+  asset_a_name: string;
+  asset_b_name: string;
+}
+
+export interface CrossLagRequest {
+  asset_a: { name: string; dates: string[]; values: number[] };
+  asset_b: { name: string; dates: string[]; values: number[] };
+  max_lag?: number;
+}
+
+export interface CrossLagPoint {
+  lag: number;
+  correlation: number;
+}
+
+export interface CrossLagResult {
+  cross_correlations: CrossLagPoint[];
+  optimal_lag: { lag: number; correlation: number; interpretation: string };
+  asset_a_name: string;
+  asset_b_name: string;
+}
+
+export interface AlertPeriod {
+  start: string;
+  end: string;
+  direction: "spike" | "breakdown";
+  peak_z_score: number;
+  avg_correlation_during: number;
+  normal_correlation: number;
+}
+
+export interface PairAlertData {
+  pair: string;
+  asset_a: string;
+  asset_b: string;
+  normal_correlation: number;
+  alerts: AlertPeriod[];
+  current_z_score: number;
+  current_status: "normal" | "alert";
+}
+
+export interface CorrelationAlertRequest {
+  datasets: Array<{ name: string; dates: string[]; values: number[] }>;
+  window?: number;
+  z_threshold?: number;
+  use_returns?: boolean;
+}
+
+export interface CorrelationAlertResult {
+  pair_alerts: PairAlertData[];
+  active_alerts: PairAlertData[];
+  total_alert_count: number;
+  most_unstable_pair: PairAlertData | null;
+  currently_anomalous: PairAlertData[];
 }

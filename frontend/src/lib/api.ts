@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { CommodityDataset, CommodityInfo, FetchMarketRequest, FetchMarketResponse, ForecastRequest, ForecastResult, HistoricalEvent, RegressionRequest, RegressionResult, ReplayRequest, ReplayResult, RiskMetricsRequest, RiskMetricsResult, RollingRegressionRequest, RollingRegressionResult, ScenarioCompareRequest, ScenarioCompareResult, ScenarioRequest, ScenarioResult, SensitivityRequest, SensitivityResult, SMCRequest, SMCResult, StepwiseRequest, StepwiseResult, StructuralBreakRequest, StructuralBreakResult } from "./types";
+import type { ChatRequest, ChatResponse, CommodityDataset, CommodityInfo, CorrelationAlertRequest, CorrelationAlertResult, CorrelationRequest, CorrelationResult, CrossLagRequest, CrossLagResult, FetchMarketRequest, FetchMarketResponse, ForecastRequest, ForecastResult, GrangerRequest, GrangerResult, HistoricalEvent, RegressionRequest, RegressionResult, RegimeScatterRequest, RegimeScatterResult, ReplayRequest, ReplayResult, RiskMetricsRequest, RiskMetricsResult, RollingCorrelationRequest, RollingCorrelationResult, RollingRegressionRequest, RollingRegressionResult, ScenarioCompareRequest, ScenarioCompareResult, ScenarioRequest, ScenarioResult, SeasonalityRequest, SeasonalityResult, SeasonalSignalRequest, SeasonalSignalResult, SensitivityRequest, SensitivityResult, SMCRequest, SMCResult, StepwiseRequest, StepwiseResult, StructuralBreakRequest, StructuralBreakResult, YoYRequest, YoYResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -95,5 +95,65 @@ export async function calculateRiskMetrics(request: RiskMetricsRequest): Promise
 
 export async function analyzeSMC(request: SMCRequest): Promise<SMCResult> {
   const { data } = await api.post<SMCResult>("/api/analytics/smc", request);
+  return data;
+}
+
+export async function runSeasonality(request: SeasonalityRequest): Promise<SeasonalityResult> {
+  const { data } = await api.post<SeasonalityResult>("/api/analytics/seasonality", request);
+  return data;
+}
+
+export async function runYoY(request: YoYRequest): Promise<YoYResult> {
+  const { data } = await api.post<YoYResult>("/api/analytics/seasonality/yoy", request);
+  return data;
+}
+
+export async function runSeasonalSignals(request: SeasonalSignalRequest): Promise<SeasonalSignalResult> {
+  const { data } = await api.post<SeasonalSignalResult>("/api/analytics/seasonality/signals", request);
+  return data;
+}
+
+export async function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
+  const { data } = await api.post<ChatResponse>("/api/chat", request);
+  return data;
+}
+
+export async function explainResults(request: {
+  analysis_type: string;
+  results_summary: Record<string, unknown>;
+  dataset_names: string[];
+  user_context?: string;
+}): Promise<{ explanation: string; analysis_type: string }> {
+  const { data } = await api.post("/api/chat/explain", request);
+  return data;
+}
+
+export async function runCorrelation(request: CorrelationRequest): Promise<CorrelationResult> {
+  const { data } = await api.post<CorrelationResult>("/api/analytics/correlation", request);
+  return data;
+}
+
+export async function runRollingCorrelation(request: RollingCorrelationRequest): Promise<RollingCorrelationResult> {
+  const { data } = await api.post<RollingCorrelationResult>("/api/analytics/correlation/rolling", request);
+  return data;
+}
+
+export async function runGrangerCausality(request: GrangerRequest): Promise<GrangerResult> {
+  const { data } = await api.post<GrangerResult>("/api/analytics/correlation/granger", request);
+  return data;
+}
+
+export async function runRegimeScatter(request: RegimeScatterRequest): Promise<RegimeScatterResult> {
+  const { data } = await api.post<RegimeScatterResult>("/api/analytics/correlation/regime-scatter", request);
+  return data;
+}
+
+export async function runCrossLag(request: CrossLagRequest): Promise<CrossLagResult> {
+  const { data } = await api.post<CrossLagResult>("/api/analytics/correlation/cross-lag", request);
+  return data;
+}
+
+export async function runCorrelationAlerts(request: CorrelationAlertRequest): Promise<CorrelationAlertResult> {
+  const { data } = await api.post<CorrelationAlertResult>("/api/analytics/correlation/alerts", request);
   return data;
 }

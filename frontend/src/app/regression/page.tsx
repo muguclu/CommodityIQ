@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
+import ExplainButton from "@/components/ui/ExplainButton";
 import {
   TrendingUp,
   AlertCircle,
@@ -127,8 +128,8 @@ function vifStyle(vif: number) {
 }
 function correlColor(v: number) {
   const a = (Math.abs(v) * 0.75).toFixed(2);
-  if (v > 0) return `rgba(239,68,68,${a})`;
-  if (v < 0) return `rgba(59,130,246,${a})`;
+  if (v > 0) return `rgba(59,130,246,${a})`;
+  if (v < 0) return `rgba(239,68,68,${a})`;
   return "transparent";
 }
 function interpret(r: RegressionResult): string[] {
@@ -255,7 +256,7 @@ function CorrelHeatmap({ matrix }: { matrix: { columns: string[]; values: number
   return (
     <div className="bg-commodity-card border border-commodity-border rounded-xl p-5">
       <h3 className="text-sm font-semibold text-commodity-text mb-1">Correlation Matrix</h3>
-      <p className="text-[11px] text-commodity-muted mb-4">Pearson correlations — red: positive, blue: negative</p>
+      <p className="text-[11px] text-commodity-muted mb-4">Pearson correlations — blue: positive, red: negative</p>
       <div className="overflow-x-auto">
         <div className="inline-grid gap-px" style={{ gridTemplateColumns: `80px repeat(${columns.length}, 64px)` }}>
           <div className="h-8" />
@@ -1172,6 +1173,27 @@ export default function RegressionPage() {
               ))}
             </ul>
           </div>
+
+          {/* ── AI Explanation ────────────────────────────────────────────────── */}
+          <ExplainButton
+            analysisType="regression"
+            resultsSummary={{
+              dependent_name: effectiveResult.dependent_name,
+              independent_names: effectiveResult.independent_names,
+              r_squared: effectiveResult.r_squared,
+              adj_r_squared: effectiveResult.adj_r_squared,
+              f_pvalue: effectiveResult.f_pvalue,
+              num_observations: effectiveResult.num_observations,
+              durbin_watson: effectiveResult.durbin_watson,
+              coefficients: effectiveResult.coefficients.map(c => ({
+                name: c.name,
+                value: c.value,
+                p_value: c.p_value,
+                significant: c.p_value < 0.05,
+              })),
+            }}
+            datasetNames={[effectiveResult.dependent_name, ...effectiveResult.independent_names]}
+          />
 
           {/* ── E: Advanced Diagnostics ───────────────────────────────────────── */}
           {depSeries && indSeries && (

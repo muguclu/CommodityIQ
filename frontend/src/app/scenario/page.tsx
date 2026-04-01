@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
+import ExplainButton from "@/components/ui/ExplainButton";
 import {
   AlertCircle, Loader2, RefreshCw, Save, BarChart2,
   TrendingUp, TrendingDown, HelpCircle, ChevronDown,
@@ -1547,6 +1548,22 @@ export default function ScenarioPage() {
               </div>
             </div>
           </div>
+
+          {/* ── AI Explanation ── */}
+          <ExplainButton
+            analysisType="scenario"
+            resultsSummary={{
+              dataset_name: ds?.name,
+              current_price: result.current_price,
+              horizon_days: result.horizon_days,
+              terminal_p10: result.terminal_stats.p10,
+              terminal_p50: result.terminal_stats.p50,
+              terminal_p90: result.terminal_stats.p90,
+              prob_above_current: result.terminal_stats.prob_above_current,
+              drivers_applied: result.drivers_applied,
+            }}
+            datasetNames={ds ? [ds.name] : []}
+          />
 
           {/* Scenario Comparison */}
           <div className="bg-commodity-card border border-commodity-border rounded-xl p-5">

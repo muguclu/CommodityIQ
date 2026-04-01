@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
+import ExplainButton from "@/components/ui/ExplainButton";
 import {
   TrendingUp, AlertCircle, Brain, Loader2, ChevronDown, ChevronUp,
   ChevronsUpDown, LineChart as LineChartIcon, ChevronLeft, ChevronRight,
@@ -1571,6 +1572,22 @@ export default function ForecastPage() {
           <ModelTable result={result} />
           <SummaryCards result={result} />
           <Interpretation result={result} />
+          <ExplainButton
+            analysisType="forecast"
+            resultsSummary={{
+              dataset_name: result.dataset_name,
+              best_model: result.best_model,
+              forecast_horizon_days: result.forecast_horizon,
+              interval: result.interval,
+              models: result.models.filter(m => !m.error).map(m => ({
+                model: m.model_name,
+                terminal_price: m.forecast_values[m.forecast_values.length - 1]?.value,
+                mape: m.backtest.metrics.mape,
+                rmse: m.backtest.metrics.rmse,
+              })),
+            }}
+            datasetNames={[result.dataset_name]}
+          />
         </>
       )}
 

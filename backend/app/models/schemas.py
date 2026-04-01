@@ -369,3 +369,159 @@ class SMCRequest(BaseModel):
     interval: str = "1d"
     swing_lookback: int = 5
     visible_bars: int = 200
+
+
+class SeasonalityRequest(BaseModel):
+    name: str
+    dates: List[str]
+    values: List[float]
+    period: int = 252
+    frequency: str = "monthly"
+
+
+class SeasonalityResult(BaseModel):
+    decomposition: dict
+    seasonal_strength: float
+    seasonal_strength_label: str
+    monthly_stats: List[dict]
+    monthly_matrix: dict
+    day_of_week: List[dict]
+    weekly_pattern: List[dict]
+    dataset_name: str
+    period_analyzed: str
+    total_years: float
+
+
+class YoYRequest(BaseModel):
+    name: str
+    dates: List[str]
+    values: List[float]
+    years_to_show: int = 5
+    normalize: bool = True
+
+
+class YoYResult(BaseModel):
+    years_data: dict
+    mean_band: List[dict]
+    current_year: int
+    normalized: bool
+    dataset_name: str
+    year_summaries: List[dict]
+
+
+class SeasonalSignalRequest(BaseModel):
+    name: str
+    dates: List[str]
+    values: List[float]
+    positive_threshold: float = 0.60
+    negative_threshold: float = 0.40
+    min_years: int = 3
+
+
+class SeasonalSignalResult(BaseModel):
+    strong_months: List[int]
+    weak_months: List[int]
+    neutral_months: List[int]
+    calendar_signals: List[dict]
+    equity_curves: dict
+    seasonal_metrics: dict
+    buyhold_metrics: dict
+    strategy_description: str
+    outperformance: float
+    dataset_name: str
+
+
+# ── Correlation ──────────────────────────────────────────────────────────────────
+
+
+class CorrelationRequest(BaseModel):
+    datasets: List[dict]
+    method: str = "pearson"
+    use_returns: bool = True
+    period: str = "full"
+
+
+class CorrelationResult(BaseModel):
+    correlation_matrix: dict
+    p_value_matrix: dict
+    method: str
+    used_returns: bool
+    num_observations: int
+    period_start: str
+    period_end: str
+    top_correlations: List[dict]
+    bottom_correlations: List[dict]
+    pca_summary: dict
+
+
+class RollingCorrelationRequest(BaseModel):
+    asset_a: dict
+    asset_b: dict
+    window_sizes: List[int] = [30, 60, 90]
+    use_returns: bool = True
+
+
+class RollingCorrelationResult(BaseModel):
+    asset_a_name: str
+    asset_b_name: str
+    rolling_data: dict
+    historical_stats: dict
+    regimes: List[dict]
+
+
+class GrangerRequest(BaseModel):
+    datasets: List[dict]
+    max_lag: int = 10
+    significance: float = 0.05
+
+
+class GrangerResult(BaseModel):
+    results: List[dict]
+    significant_pairs: List[dict]
+    network: dict
+    max_lag_tested: int
+    significance_level: float
+
+
+class RegimeScatterRequest(BaseModel):
+    asset_a: dict
+    asset_b: dict
+    regime_window: int = 60
+    num_regimes: int = 3
+
+
+class RegimeScatterResult(BaseModel):
+    scatter_data: List[dict]
+    regime_correlations: dict
+    regime_regressions: dict
+    regime_thresholds: dict
+    asset_a_name: str
+    asset_b_name: str
+
+
+class CrossLagRequest(BaseModel):
+    asset_a: dict
+    asset_b: dict
+    max_lag: int = 20
+
+
+class CrossLagResult(BaseModel):
+    cross_correlations: List[dict]
+    optimal_lag: dict
+    asset_a_name: str
+    asset_b_name: str
+
+
+class CorrelationAlertRequest(BaseModel):
+    datasets: List[dict]
+    window: int = 60
+    z_threshold: float = 2.0
+    use_returns: bool = True
+
+
+class CorrelationAlertResult(BaseModel):
+    pair_alerts: List[dict]
+    active_alerts: List[dict]
+    total_alert_count: int
+    most_unstable_pair: Optional[dict]
+    currently_anomalous: List[dict]

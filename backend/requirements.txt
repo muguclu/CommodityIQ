@@ -10,6 +10,7 @@ statsmodels==0.14.6
 scipy==1.17.1
 pmdarima==2.0.4
 python-dotenv==1.0.1
+anthropic==0.39.0
 pywavelets==1.4.1
 arch==8.0.0
 darts==0.30.0

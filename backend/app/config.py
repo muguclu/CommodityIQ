@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     app_name: str = "CommodityIQ API"
     debug: bool = False
     cors_origins: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    ANTHROPIC_API_KEY: str = ""
+    CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
+    CLAUDE_MAX_TOKENS: int = 4096
 
     class Config:
         env_file = ".env"

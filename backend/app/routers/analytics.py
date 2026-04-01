@@ -414,7 +414,7 @@ def _future_dates(last_date: str, horizon: int, interval: str = "1d") -> List[st
     elif interval == "1wk":
         dates = pd.bdate_range(start=last_dt + pd.Timedelta(days=1), periods=horizon, freq="W-FRI")
     elif interval == "1mo":
-        dates = pd.bdate_range(start=last_dt + pd.Timedelta(days=1), periods=horizon, freq="BME")
+        dates = pd.bdate_range(start=last_dt + pd.Timedelta(days=1), periods=horizon, freq="BM")
     else:  # "1d" default
         dates = pd.bdate_range(start=last_dt + pd.Timedelta(days=1), periods=horizon, freq="B")
 
