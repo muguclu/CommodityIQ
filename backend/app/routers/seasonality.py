@@ -12,6 +12,18 @@ from app.models.schemas import (
     SeasonalSignalRequest, SeasonalSignalResult,
 )
 
+def _freq(alias: str) -> str:
+    """Return the correct pandas frequency alias for the installed version."""
+    _major, _minor = int(pd.__version__.split(".")[0]), int(pd.__version__.split(".")[1])
+    new_pandas = (_major > 2) or (_major == 2 and _minor >= 2)
+    mapping_old_to_new = {"M": "ME", "Q": "QE", "Y": "YE", "BM": "BME"}
+    mapping_new_to_old = {v: k for k, v in mapping_old_to_new.items()}
+    if new_pandas:
+        return mapping_old_to_new.get(alias, alias)
+    else:
+        return mapping_new_to_old.get(alias, alias)
+
+
 router = APIRouter(tags=["seasonality"])
 
 
@@ -79,7 +91,7 @@ def run_seasonality(req: SeasonalityRequest) -> SeasonalityResult:
     }
 
     # ── Monthly Return Statistics ──────────────────────────────────────────────
-    monthly_prices  = series.resample("M").last()
+    monthly_prices  = series.resample(_freq("M")).last()
     monthly_returns = monthly_prices.pct_change().dropna()
 
     monthly_stats: List[dict] = []
@@ -294,7 +306,7 @@ def run_seasonal_signals(req: SeasonalSignalRequest) -> SeasonalSignalResult:
     series = series[~series.index.duplicated(keep="last")]
 
     # ── Monthly statistics ─────────────────────────────────────────────────────
-    monthly_prices  = series.resample("M").last()
+    monthly_prices  = series.resample(_freq("M")).last()
     monthly_returns = monthly_prices.pct_change().dropna()
 
     monthly_stats: dict = {}
@@ -368,7 +380,7 @@ def run_seasonal_signals(req: SeasonalSignalRequest) -> SeasonalSignalResult:
         downside  = float(rets[rets < 0].std() * np.sqrt(252)) if len(rets[rets < 0]) > 1 else 0.0
         sortino   = annual_return / downside if downside > 0 else 0.0
 
-        monthly_r = rets.resample("M").sum()
+        monthly_r = rets.resample(_freq("M")).sum()
         win_rate  = float((monthly_r > 0).mean())
 
         return {
