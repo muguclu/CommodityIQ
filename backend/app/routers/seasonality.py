@@ -32,18 +32,21 @@ def run_seasonality(req: SeasonalityRequest) -> SeasonalityResult:
     series = series.asfreq("B")
     series = series.ffill().bfill()
 
-    min_obs = req.period * 2
-    if len(series) < min_obs:
+    period = req.period
+    if period <= 0:
+        period = 252
+
+    while len(series) < period * 2 and period > 20:
+        period = period // 2
+
+    if len(series) < period * 2:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"Need at least {min_obs} business-day observations for STL "
-                f"with period={req.period}. Got {len(series)}."
-            ),
+            detail=f"Need at least {period * 2} data points. Got {len(series)}.",
         )
 
     # ── STL Decomposition ──────────────────────────────────────────────────────
-    stl = STL(series, period=req.period, robust=True)
+    stl = STL(series, period=period, robust=True)
     stl_res = stl.fit()
 
     trend    = stl_res.trend
