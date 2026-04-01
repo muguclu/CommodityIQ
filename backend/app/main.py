@@ -10,18 +10,13 @@ app = FastAPI(
     description="Backend ML microservice for the CommodityIQ trading analytics platform.",
 )
 
-origins = list({
-    settings.FRONTEND_URL,
-    "http://localhost:3000",
-    "http://localhost:3001",
-})
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 app.include_router(health.router)
