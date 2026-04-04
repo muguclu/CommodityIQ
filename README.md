@@ -193,9 +193,9 @@ Wavelet Decomposition (db4, level 3)
 | Regression | `/regression` | ✅ Active |
 | Forecast | `/forecast` | ✅ Active |
 | Scenario | `/scenario` | ✅ Active |
-| Seasonality | `/seasonality` | 🔜 Coming Soon |
-| Correlation | `/correlation` | 🔜 Coming Soon |
-| AI Chat | `/chat` | 🔜 Coming Soon |
+| Seasonality | `/seasonality` | ✅ Active |
+| Correlation | `/correlation` | ✅ Active |
+| AI Chat | `/chat` | ✅ Active |
 
 ---
 
