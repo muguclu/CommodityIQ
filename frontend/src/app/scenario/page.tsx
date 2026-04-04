@@ -194,47 +194,33 @@ function FanChart({
   showSpaghetti: boolean;
 }) {
   const histSlice = historical.slice(-90);
-
-  const histData = histSlice.map((h) => ({
-    date: h.date,
-    hist: h.price,
-    zone: "hist",
-  }));
-
   const today = histSlice[histSlice.length - 1];
   const currentPrice = today?.price ?? result.current_price;
+  const p = result.percentile_paths;
 
-  const forecastData = result.forecast_dates.map((d, i) => {
-    const p = result.percentile_paths;
-    return {
-      date: d,
-      P10: p["P10"]?.[i],
-      P25: p["P25"]?.[i],
-      P50: p["P50"]?.[i],
-      P75: p["P75"]?.[i],
-      P90: p["P90"]?.[i],
-      band1: [p["P10"]?.[i], p["P90"]?.[i]] as [number, number],
-      band2: [p["P25"]?.[i], p["P75"]?.[i]] as [number, number],
-      currentRef: currentPrice,
-      zone: "forecast",
-    };
-  });
-
-  const spaghettiData = showSpaghetti
-    ? result.forecast_dates.map((d, i) => {
-        const row: Record<string, number | string> = { date: d };
-        result.sample_paths.forEach((path, pi) => {
-          row[`sp${pi}`] = path[i];
-        });
-        return row;
-      })
-    : [];
-
-  const allData = [
-    ...histData,
-    { date: today?.date, hist: currentPrice, divider: true },
-    ...forecastData,
+  // ── Single unified dataset: one row per date, all columns present ──
+  // Historical rows carry `hist`; forecast rows carry percentile + spaghetti fields.
+  // Rows where a field is absent stay undefined → Recharts skips those points cleanly.
+  const allData: Record<string, unknown>[] = [
+    ...histSlice.map((h) => ({ date: h.date, hist: h.price })),
+    ...result.forecast_dates.map((d, i) => {
+      const row: Record<string, unknown> = {
+        date: d,
+        P10:   p["P10"]?.[i],
+        P25:   p["P25"]?.[i],
+        P50:   p["P50"]?.[i],
+        P75:   p["P75"]?.[i],
+        P90:   p["P90"]?.[i],
+        band1: [p["P10"]?.[i], p["P90"]?.[i]],
+        band2: [p["P25"]?.[i], p["P75"]?.[i]],
+      };
+      result.sample_paths.forEach((path, pi) => { row[`sp${pi}`] = path[i]; });
+      return row;
+    }),
   ];
+
+  // Show ~8 evenly-spaced x-axis ticks across the full range
+  const xInterval = Math.max(1, Math.floor(allData.length / 8));
 
   const spaghettiColors = [
     "#f59e0b","#fbbf24","#fcd34d","#d97706","#92400e",
@@ -262,7 +248,7 @@ function FanChart({
           tick={{ fill: "#64748b", fontSize: 11 }}
           tickLine={false}
           tickFormatter={fmtAxisDate}
-          interval="preserveStartEnd"
+          interval={xInterval}
         />
         <YAxis
           tick={{ fill: "#64748b", fontSize: 11 }}
@@ -293,7 +279,6 @@ function FanChart({
           result.sample_paths.map((_, pi) => (
             <Line
               key={`sp${pi}`}
-              data={spaghettiData}
               dataKey={`sp${pi}`}
               dot={false}
               stroke={spaghettiColors[pi % spaghettiColors.length]}
@@ -305,20 +290,17 @@ function FanChart({
           ))}
         <Area
           dataKey="band1"
-          data={forecastData}
           fill="url(#band1Grad)"
           stroke="none"
           name="P10–P90"
         />
         <Area
           dataKey="band2"
-          data={forecastData}
           fill="url(#band2Grad)"
           stroke="none"
           name="P25–P75"
         />
         <Line
-          data={forecastData}
           dataKey="P50"
           stroke="#f59e0b"
           strokeWidth={2}
@@ -327,7 +309,6 @@ function FanChart({
           isAnimationActive={false}
         />
         <Line
-          data={forecastData}
           dataKey="P10"
           stroke="#f59e0b"
           strokeWidth={1}
@@ -338,7 +319,6 @@ function FanChart({
           isAnimationActive={false}
         />
         <Line
-          data={forecastData}
           dataKey="P90"
           stroke="#f59e0b"
           strokeWidth={1}
@@ -349,7 +329,6 @@ function FanChart({
           isAnimationActive={false}
         />
         <Line
-          data={histData}
           dataKey="hist"
           stroke="#64748b"
           strokeWidth={1.5}
