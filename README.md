@@ -1,6 +1,6 @@
 # CommodityIQ
 
-> Professional commodity trading analytics platform — Bloomberg Terminal meets modern web design.
+
 
 CommodityIQ brings institutional-grade forecasting and signal analysis to any commodity or equity ticker. It combines classical statistical models with deep learning (Temporal Fusion Transformer) and volatility modelling (GARCH) behind a clean, dark-themed dashboard.
 
@@ -199,6 +199,3 @@ Wavelet Decomposition (db4, level 3)
 
 ---
 
-## License
-
-MIT
