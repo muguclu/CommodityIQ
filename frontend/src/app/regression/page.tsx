@@ -623,6 +623,15 @@ function AdvancedDiagnostics({ depSeries, indSeries }: { depSeries: SeriesInfo; 
             {breaksResult && (
               <div className="space-y-5">
                 {/* CUSUM Chart */}
+                {breaksResult.cusum?.error && (
+                  <div className="bg-commodity-panel rounded-xl p-4">
+                    <div className="flex items-start justify-between mb-0.5">
+                      <h4 className="text-xs font-semibold text-commodity-text">CUSUM Test</h4>
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-slate-500/15 text-slate-400 border-slate-500/30">Unavailable</span>
+                    </div>
+                    <p className="text-[11px] text-commodity-muted mt-2">{breaksResult.cusum.error}</p>
+                  </div>
+                )}
                 {breaksResult.cusum && !breaksResult.cusum.error && (
                   <div className="bg-commodity-panel rounded-xl p-4">
                     <div className="flex items-start justify-between mb-0.5">

@@ -1142,7 +1142,7 @@ function SMCSection({
             <>
               <CandlestickSMC
                 data={smcResult}
-                height={500}
+                height={650}
                 showSwingPoints={smcToggles.swingPoints}
                 showStructureLabels={smcToggles.structureLabels}
                 showBreaks={smcToggles.breaks}
@@ -1577,8 +1577,24 @@ export default function ForecastPage() {
             resultsSummary={{
               dataset_name: result.dataset_name,
               best_model: result.best_model,
-              forecast_horizon_days: result.forecast_horizon,
-              interval: result.interval,
+              forecast_horizon_bars: result.forecast_horizon,
+              interval: result.interval ?? "1d",
+              horizon_description: (() => {
+                const bars = result.forecast_horizon;
+                const iv = result.interval ?? "1d";
+                if (iv === "1d") return `${bars} trading days`;
+                if (iv === "1wk") return `${bars} weeks`;
+                if (iv === "1mo") return `${bars} months`;
+                const m = iv.match(/^(\d+)(m|h)$/);
+                if (m) {
+                  const mins = parseInt(m[1]) * (m[2] === "h" ? 60 : 1) * bars;
+                  if (mins < 60) return `${mins} minutes (${bars} bars × ${iv})`;
+                  if (mins < 1440) return `${(mins / 60).toFixed(1)} hours (${bars} bars × ${iv})`;
+                  return `${(mins / 1440).toFixed(1)} days (${bars} bars × ${iv})`;
+                }
+                return `${bars} bars (${iv} interval)`;
+              })(),
+              horizon_real_time: result.horizon_real_time,
               models: result.models.filter(m => !m.error).map(m => ({
                 model: m.model_name,
                 terminal_price: m.forecast_values[m.forecast_values.length - 1]?.value,

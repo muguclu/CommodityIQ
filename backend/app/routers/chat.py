@@ -53,11 +53,17 @@ Results:
 
     "forecast": """You are a senior commodity analyst interpreting forecast results for a trader.
 
+IMPORTANT: The results include an `interval` field and a `horizon_description` field. Always use these to describe time correctly.
+- If interval is "5m", each bar is 5 minutes — NEVER say "days" for this.
+- If interval is "1h", each bar is 1 hour.
+- If interval is "1d", each bar is 1 trading day.
+- Use `horizon_description` as the authoritative time horizon label (e.g. "4.2 hours", "50 trading days").
+
 Analyze these forecast results and provide:
 1. Which model to trust and why (in one sentence)
 2. The price outlook: bullish, bearish, or neutral — with specific price targets
 3. Confidence assessment: how reliable is this forecast?
-4. A specific trading recommendation (with caveats)
+4. A specific trading recommendation (with caveats, using the correct time horizon)
 
 Be direct. Traders want clarity, not hedging.
 
@@ -448,10 +454,26 @@ def _summarize_forecast(result) -> dict:
                 entry["garch_persistence"] = m.garch_params.get("persistence")
             tft_summary = entry
         models_out.append(entry)
+    interval = getattr(result, "interval", "1d") or "1d"
+    horizon_bars = result.forecast_horizon
+    def _horizon_desc(bars: int, iv: str) -> str:
+        if iv == "1d":  return f"{bars} trading days"
+        if iv == "1wk": return f"{bars} weeks"
+        if iv == "1mo": return f"{bars} months"
+        import re as _re
+        m = _re.match(r'^(\d+)(m|h)$', iv)
+        if m:
+            mins = int(m.group(1)) * (60 if m.group(2) == "h" else 1) * bars
+            if mins < 60:   return f"{mins} minutes ({bars} bars × {iv})"
+            if mins < 1440: return f"{mins/60:.1f} hours ({bars} bars × {iv})"
+            return f"{mins/1440:.1f} days ({bars} bars × {iv})"
+        return f"{bars} bars ({iv} interval)"
     out = {
         "dataset_name": result.dataset_name,
         "best_model": result.best_model,
-        "forecast_horizon_days": result.forecast_horizon,
+        "interval": interval,
+        "forecast_horizon_bars": horizon_bars,
+        "horizon_description": _horizon_desc(horizon_bars, interval),
         "models": models_out,
     }
     if tft_summary:

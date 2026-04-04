@@ -1044,32 +1044,61 @@ async def structural_breaks(req: StructuralBreakRequest):
 
     # ── CUSUM ──────────────────────────────────────────────────────────────────
     if req.method in ("cusum", "all"):
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                ols_full = sm.OLS(y, X_full).fit()
-                rresid, _rparams, _rvars, rresid_scaled = recursive_olsresiduals(ols_full)
-            m = len(rresid_scaled)
-            cusum_vals = np.cumsum(rresid_scaled) / np.sqrt(m)
-            bound = 0.948  # 5% critical value
-            start_idx = n - m  # recursive residuals start after initial k obs
-            cusum_data = [
-                {"date": dates[start_idx + i], "cusum": round(float(cusum_vals[i]), 6)}
-                for i in range(m)
-            ]
-            breaks_detected = [
-                {"date": d["date"], "cusum_value": d["cusum"]}
-                for d in cusum_data
-                if abs(d["cusum"]) > bound
-            ]
+        if n < 15:
             cusum_result = {
-                "values": cusum_data,
-                "upper_bound": bound,
-                "lower_bound": -bound,
-                "breaks_detected": breaks_detected,
+                "error": "Need at least 15 data points for CUSUM analysis",
+                "values": [],
+                "upper_bound": 0.948,
+                "lower_bound": -0.948,
+                "breaks_detected": [],
             }
-        except Exception as e:
-            cusum_result = {"error": str(e)}
+        else:
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    ols_full = sm.OLS(y, X_full).fit()
+                    raw = recursive_olsresiduals(ols_full)
+
+                if len(raw) >= 4:
+                    rresid, _rparams, _rvars, rresid_scaled = raw[0], raw[1], raw[2], raw[3]
+                elif len(raw) == 3:
+                    rresid = raw[0]
+                    rresid_clean = rresid[~np.isnan(rresid)]
+                    std = np.std(rresid_clean) if len(rresid_clean) > 0 else 0.0
+                    rresid_scaled = rresid / std if std > 0 else rresid
+                else:
+                    rresid = raw[0]
+                    std = np.std(rresid[~np.isnan(rresid)])
+                    rresid_scaled = rresid / std if std > 0 else rresid
+
+                rresid_scaled = np.nan_to_num(rresid_scaled, nan=0.0)
+                m = len(rresid_scaled)
+                cusum_vals = np.cumsum(rresid_scaled) / np.sqrt(m)
+                bound = 0.948  # 5% critical value
+                start_idx = n - m  # recursive residuals start after initial k obs
+                cusum_data = [
+                    {"date": dates[start_idx + i], "cusum": round(float(cusum_vals[i]), 6)}
+                    for i in range(m)
+                ]
+                breaks_detected = [
+                    {"date": d["date"], "cusum_value": d["cusum"]}
+                    for d in cusum_data
+                    if abs(d["cusum"]) > bound
+                ]
+                cusum_result = {
+                    "values": cusum_data,
+                    "upper_bound": bound,
+                    "lower_bound": -bound,
+                    "breaks_detected": breaks_detected,
+                }
+            except Exception as e:
+                cusum_result = {
+                    "error": f"CUSUM calculation failed: {str(e)}",
+                    "values": [],
+                    "upper_bound": 0.948,
+                    "lower_bound": -0.948,
+                    "breaks_detected": [],
+                }
 
     # ── Chow ───────────────────────────────────────────────────────────────────
     if req.method in ("chow", "all"):
