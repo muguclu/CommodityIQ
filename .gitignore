@@ -12,3 +12,4 @@ lightning_logs/
 .DS_Store
 .vscode/
 .idea/
+backend/hf-space/
