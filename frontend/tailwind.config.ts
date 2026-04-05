@@ -35,11 +35,22 @@ const config: Config = {
       animation: {
         "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         "fade-in": "fadeIn 0.3s ease-in-out",
+        "signal-flash": "signalFlash 0.6s ease-out",
+        "countdown": "countdown linear forwards",
       },
       keyframes: {
         fadeIn: {
           "0%": { opacity: "0", transform: "translateY(4px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        signalFlash: {
+          "0%":   { opacity: "0.6", transform: "scale(0.98)" },
+          "50%":  { opacity: "1",   transform: "scale(1.01)" },
+          "100%": { opacity: "1",   transform: "scale(1)" },
+        },
+        countdown: {
+          "0%":   { width: "100%" },
+          "100%": { width: "0%" },
         },
       },
     },

@@ -12,6 +12,7 @@ import {
   Thermometer,
   Link2,
   Bot,
+  Radio,
   ChevronLeft,
   ChevronRight,
   BarChart2,
@@ -65,6 +66,12 @@ const navItems = [
     href: "/chat",
     icon: Bot,
     description: "Ask AI about markets",
+  },
+  {
+    label: "Signals",
+    href: "/signals",
+    icon: Radio,
+    description: "Live trading signals",
   },
 ];
 
