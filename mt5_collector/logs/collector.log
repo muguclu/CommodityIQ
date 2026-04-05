@@ -1,0 +1,156 @@
+2026-04-05 16:08:28 | INFO     | collector | ═══════════════════════════════════════
+2026-04-05 16:08:28 | INFO     | collector | CommodityIQ MT5 Collector v1.0.0
+2026-04-05 16:08:28 | INFO     | collector | Login=0  Server=Vantage-Live
+2026-04-05 16:08:28 | INFO     | collector | API=http://localhost:8000
+2026-04-05 16:08:28 | INFO     | collector | Instruments=['XAUUSD', 'XAGUSD', 'USOIL', 'UKOIL', 'NATGAS']
+2026-04-05 16:08:28 | INFO     | collector | Bars/request=100
+2026-04-05 16:08:28 | INFO     | collector | ═══════════════════════════════════════
+2026-04-05 16:08:28 | INFO     | collector | Checking MT5 connection…
+2026-04-05 16:08:28 | INFO     | mt5_client | MT5 init attempt 1/3 — server=Vantage-Live login=0
+2026-04-05 16:17:31 | INFO     | collector | ═══════════════════════════════════════
+2026-04-05 16:17:31 | INFO     | collector | CommodityIQ MT5 Collector v1.0.0
+2026-04-05 16:17:31 | INFO     | collector | Login=5048909818  Server=MetaQuotes-Demo
+2026-04-05 16:17:31 | INFO     | collector | API=https://your-hf-space.hf.space
+2026-04-05 16:17:31 | INFO     | collector | Instruments=['XAUUSD', 'XAGUSD', 'USOIL', 'UKOIL', 'NATGAS']
+2026-04-05 16:17:31 | INFO     | collector | Bars/request=100
+2026-04-05 16:17:31 | INFO     | collector | ═══════════════════════════════════════
+2026-04-05 16:17:31 | INFO     | collector | Checking MT5 connection…
+2026-04-05 16:17:31 | INFO     | mt5_client | MT5 init attempt 1/3 — server=MetaQuotes-Demo login=5048909818
+2026-04-05 16:17:31 | INFO     | mt5_client | MT5 connected — account=5048909818 server=MetaQuotes-Demo balance=10000.00
+2026-04-05 16:17:31 | INFO     | collector | Checking API health…
+2026-04-05 16:17:31 | WARNING  | api_client | API health check returned 404
+2026-04-05 16:17:31 | WARNING  | collector | API health check failed — collector will buffer data locally until API is reachable
+2026-04-05 16:17:31 | INFO     | collector | Running single collection cycle (--once mode)
+2026-04-05 16:17:31 | INFO     | scheduler | ─── Cycle start ─── instruments=['XAUUSD', 'XAGUSD', 'USOIL', 'UKOIL', 'NATGAS']
+2026-04-05 16:17:32 | DEBUG    | mt5_client | Fetched 100 bars for XAUUSD
+2026-04-05 16:17:32 | DEBUG    | mt5_client | Fetched 100 bars for XAGUSD
+2026-04-05 16:17:32 | WARNING  | mt5_client | No data for USOIL: (-1, 'Terminal: Call failed')
+2026-04-05 16:17:32 | WARNING  | scheduler | Skipping USOIL — no data returned
+2026-04-05 16:17:32 | WARNING  | mt5_client | No data for UKOIL: (-1, 'Terminal: Call failed')
+2026-04-05 16:17:32 | WARNING  | scheduler | Skipping UKOIL — no data returned
+2026-04-05 16:17:32 | WARNING  | mt5_client | No data for NATGAS: (-1, 'Terminal: Call failed')
+2026-04-05 16:17:32 | WARNING  | scheduler | Skipping NATGAS — no data returned
+2026-04-05 16:17:32 | INFO     | scheduler | Cycle collected 200 bars across 2 instruments (skipped: ['USOIL', 'UKOIL', 'NATGAS'])
+2026-04-05 16:17:32 | WARNING  | api_client | POST attempt 1/3 — status=404 body=<!DOCTYPE html>
+<html class="">
+<head>
+    <meta charset="utf-8"/>
+    <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <meta
+
+2026-04-05 16:17:32 | INFO     | api_client | Retrying in 2s…
+2026-04-05 16:17:34 | WARNING  | api_client | POST attempt 2/3 — status=404 body=<!DOCTYPE html>
+<html class="">
+<head>
+    <meta charset="utf-8"/>
+    <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <meta
+
+2026-04-05 16:17:34 | INFO     | api_client | Retrying in 4s…
+2026-04-05 16:17:39 | WARNING  | api_client | POST attempt 3/3 — status=404 body=<!DOCTYPE html>
+<html class="">
+<head>
+    <meta charset="utf-8"/>
+    <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <meta
+
+2026-04-05 16:17:39 | INFO     | api_client | Payload buffered locally (200 bars)
+2026-04-05 16:17:39 | WARNING  | scheduler | Cycle complete — data buffered (API unreachable)
+2026-04-05 16:17:39 | INFO     | mt5_client | MT5 connection closed
+2026-04-05 16:17:39 | INFO     | collector | Done.
+2026-04-05 16:19:26 | INFO     | collector | ═══════════════════════════════════════
+2026-04-05 16:19:26 | INFO     | collector | CommodityIQ MT5 Collector v1.0.0
+2026-04-05 16:19:26 | INFO     | collector | Login=5048909818  Server=MetaQuotes-Demo
+2026-04-05 16:19:26 | INFO     | collector | API=https://your-hf-space.hf.space
+2026-04-05 16:19:26 | INFO     | collector | Instruments=['XAUUSD']
+2026-04-05 16:19:26 | INFO     | collector | Bars/request=100
+2026-04-05 16:19:26 | INFO     | collector | ═══════════════════════════════════════
+2026-04-05 16:19:26 | INFO     | collector | Checking MT5 connection…
+2026-04-05 16:19:26 | INFO     | mt5_client | MT5 init attempt 1/3 — server=MetaQuotes-Demo login=5048909818
+2026-04-05 16:19:26 | INFO     | mt5_client | MT5 connected — account=5048909818 server=MetaQuotes-Demo balance=10000.00
+2026-04-05 16:19:26 | INFO     | collector | Checking API health…
+2026-04-05 16:19:26 | WARNING  | api_client | API health check returned 404
+2026-04-05 16:19:26 | WARNING  | collector | API health check failed — collector will buffer data locally until API is reachable
+2026-04-05 16:19:26 | INFO     | collector | Running single collection cycle (--once mode)
+2026-04-05 16:19:26 | INFO     | scheduler | ─── Cycle start ─── instruments=['XAUUSD']
+2026-04-05 16:19:26 | DEBUG    | mt5_client | Fetched 100 bars for XAUUSD
+2026-04-05 16:19:26 | INFO     | scheduler | Cycle collected 100 bars across 1 instruments (skipped: none)
+2026-04-05 16:19:26 | INFO     | api_client | Flushing 1 buffered payloads…
+2026-04-05 16:19:26 | WARNING  | api_client | POST attempt 1/3 — status=404 body=<!DOCTYPE html>
+<html class="">
+<head>
+    <meta charset="utf-8"/>
+    <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <meta
+
+2026-04-05 16:19:26 | INFO     | api_client | Retrying in 2s…
+2026-04-05 16:19:29 | WARNING  | api_client | POST attempt 2/3 — status=404 body=<!DOCTYPE html>
+<html class="">
+<head>
+    <meta charset="utf-8"/>
+    <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <meta
+
+2026-04-05 16:19:29 | INFO     | api_client | Retrying in 4s…
+2026-04-05 16:19:33 | WARNING  | api_client | POST attempt 3/3 — status=404 body=<!DOCTYPE html>
+<html class="">
+<head>
+    <meta charset="utf-8"/>
+    <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <meta
+
+2026-04-05 16:19:33 | WARNING  | api_client | 1 payloads still buffered after flush attempt
+2026-04-05 16:19:33 | WARNING  | api_client | POST attempt 1/3 — status=404 body=<!DOCTYPE html>
+<html class="">
+<head>
+    <meta charset="utf-8"/>
+    <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <meta
+
+2026-04-05 16:19:33 | INFO     | api_client | Retrying in 2s…
+2026-04-05 16:19:36 | WARNING  | api_client | POST attempt 2/3 — status=404 body=<!DOCTYPE html>
+<html class="">
+<head>
+    <meta charset="utf-8"/>
+    <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <meta
+
+2026-04-05 16:19:36 | INFO     | api_client | Retrying in 4s…
+2026-04-05 16:19:40 | WARNING  | api_client | POST attempt 3/3 — status=404 body=<!DOCTYPE html>
+<html class="">
+<head>
+    <meta charset="utf-8"/>
+    <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <meta
+
+2026-04-05 16:19:40 | INFO     | api_client | Payload buffered locally (100 bars)
+2026-04-05 16:19:40 | WARNING  | scheduler | Cycle complete — data buffered (API unreachable)
+2026-04-05 16:19:40 | INFO     | mt5_client | MT5 connection closed
+2026-04-05 16:19:40 | INFO     | collector | Done.
