@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = os.environ.get("ANTHROPIC_API_KEY", "")
     CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
     CLAUDE_MAX_TOKENS: int = 4096
+    SIGNAL_API_KEY: str = os.environ.get("SIGNAL_API_KEY", "")
 
 
 settings = Settings()

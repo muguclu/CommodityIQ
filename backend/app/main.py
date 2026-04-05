@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import health, data, market_data, analytics, scenario, seasonality, chat, correlation
+from app.routers import health, data, market_data, analytics, scenario, seasonality, chat, correlation, signals
 
 app = FastAPI(
     title="CommodityIQ API",
@@ -27,6 +27,7 @@ app.include_router(scenario.router, prefix="/api/analytics")
 app.include_router(seasonality.router, prefix="/api/analytics", tags=["seasonality"])
 app.include_router(correlation.router, prefix="/api/analytics", tags=["correlation"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
+app.include_router(signals.router, prefix="/api", tags=["signals"])
 
 
 @app.get("/")
