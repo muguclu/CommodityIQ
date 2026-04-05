@@ -39,6 +39,68 @@ CSV upload + live market data fetch via yfinance for any ticker/commodity symbol
 
 ---
 
+## Architecture
+
+```
+Windows PC (MT5 + Vantage / MetaQuotes)
+    │
+    │  MetaTrader5 Python lib
+    │  Every 5 min: OHLCV bar → POST /api/signals/feed
+    │
+    ▼
+Backend API  (FastAPI · Hugging Face Spaces)
+    │
+    │  TFT forecast + SMC analysis
+    │  → BUY / SELL / WAIT signal
+    │
+    ▼
+Frontend  (Next.js 14 · Vercel)
+    │
+    │  Live signal dashboard  /signals
+    │  BUY   SELL   WAIT
+    │  + confidence %, TP/SL levels, R:R
+```
+
+The MT5 collector runs locally on a Windows machine where MetaTrader5 is installed. The backend and frontend are deployed independently and communicate over HTTP.
+
+---
+
+## Signal Engine
+
+The signal engine runs inside the backend. On each incoming OHLCV batch from the collector it:
+
+1. **Stores bars** in an in-memory deque (up to 500 bars per symbol; resets on server restart).
+2. **Runs SMC analysis** on the last 100 bars — detects swing points, supply/demand zones, and liquidity pools, then derives a directional bias.
+3. **Runs TFT forecast** on the last 100 bars — predicts the next 5 bars. Results are cached per symbol for 30 minutes to avoid redundant retraining.
+4. **Scores confluence:**
+
+| Condition | Score |
+|-----------|-------|
+| TFT and SMC agree on direction | +0.30 |
+| TFT forecast price-move strength (maxes at 2 %) | +0.00 – 0.30 |
+| Price proximity to nearest SMC key level | +0.00 – 0.20 |
+| Last bar volume above 20-bar average | +0.00 – 0.20 |
+
+5. **Generates a signal:** both sources agree → BUY/SELL; score ≥ 0.5 with a dominant direction → BUY/SELL; otherwise → WAIT.
+6. **Validates R:R:** if risk:reward < 1.5 the signal is downgraded to WAIT regardless of confluence score.
+
+Each signal contains: entry price, take profit, stop loss, risk:reward ratio, confidence score (0–1), TFT direction, SMC bias, and the nearest support/resistance levels. Signals expire 15 minutes after generation.
+
+---
+
+## Live Signal Dashboard
+
+The `/signals` page polls `GET /api/signals/latest` every 30 seconds.
+
+- **Signal cards** — one per tracked instrument: BUY/SELL/WAIT badge, confidence meter (gradient red → amber → green), entry/TP/SL prices, R:R, TFT and SMC direction indicators.
+- **Countdown bar** — shrinks linearly across the 15-minute validity window.
+- **Connection status** — live/disconnected indicator, last-update timestamp, stale-data warning if data is older than 10 minutes.
+- **Stats bar** — signal counts by type, average confidence, current market session.
+
+No signals appear until the MT5 collector has pushed at least one bar to the backend.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -52,6 +114,9 @@ CSV upload + live market data fetch via yfinance for any ticker/commodity symbol
 | Volatility | arch 8.0 (GARCH) |
 | Statistical | statsmodels, pmdarima, scipy |
 | Market Data | yfinance |
+| MT5 Collector | MetaTrader5 Python lib, APScheduler, httpx |
+| Signal Engine | in-memory deque store, TFT + SMC confluence scoring |
+| Signal Dashboard | 30 s polling, real-time signal cards, countdown timers |
 | Fonts | Geist Sans + Geist Mono |
 
 ---
@@ -68,26 +133,41 @@ CommodityIQ/
 │   │   │   ├── regression/page.tsx     # Regression analysis
 │   │   │   ├── scenario/page.tsx       # Scenario analysis
 │   │   │   ├── seasonality/page.tsx    # Seasonality decomposition
-│   │   │   └── correlation/page.tsx    # Correlation matrix
+│   │   │   ├── correlation/page.tsx    # Correlation matrix
+│   │   │   └── signals/page.tsx        # Live signal dashboard
 │   │   ├── components/layout/          # Sidebar, Header
 │   │   └── lib/
 │   │       ├── api.ts                  # Axios client (180s timeout for TFT)
 │   │       └── types.ts                # TypeScript interfaces
 │   └── package.json
 │
-└── backend/
-    ├── app/
-    │   ├── routers/
-    │   │   ├── analytics.py            # /api/analytics/* (forecast, regression)
-    │   │   ├── scenario.py             # /api/analytics/scenario/*
-    │   │   ├── market_data.py          # /api/market/*
-    │   │   └── data.py                 # /api/data/upload-csv
-    │   ├── services/
-    │   │   ├── hybrid_forecast.py      # Orchestrates full TFT pipeline
-    │   │   ├── tft_engine.py           # TFT train + forecast (Darts)
-    │   │   ├── wavelet_service.py      # Wavelet decomposition
-    │   │   └── garch_engine.py         # GARCH volatility modelling
-    │   └── models/schemas.py           # Pydantic request/response schemas
+├── backend/
+│   ├── app/
+│   │   ├── routers/
+│   │   │   ├── analytics.py            # /api/analytics/* (forecast, regression)
+│   │   │   ├── scenario.py             # /api/analytics/scenario/*
+│   │   │   ├── market_data.py          # /api/market/*
+│   │   │   ├── data.py                 # /api/data/upload-csv
+│   │   │   └── signals.py              # /api/signals/* (feed, latest, health)
+│   │   ├── services/
+│   │   │   ├── hybrid_forecast.py      # Orchestrates full TFT pipeline
+│   │   │   ├── tft_engine.py           # TFT train + forecast (Darts)
+│   │   │   ├── wavelet_service.py      # Wavelet decomposition
+│   │   │   ├── garch_engine.py         # GARCH volatility modelling
+│   │   │   └── signal_service.py       # TFT + SMC confluence, signal generation
+│   │   └── models/
+│   │       ├── schemas.py              # Pydantic request/response schemas
+│   │       └── signal.py               # Signal, OHLCVBar, MarketDataPayload models
+│   └── requirements.txt
+│
+└── mt5_collector/                      # Windows-only, runs alongside MetaTrader5
+    ├── collector.py                    # Entry point — --once flag or 5-min scheduler
+    ├── config.py                       # MT5 credentials, API URL, symbol list (.env)
+    ├── mt5_client.py                   # MT5 connection, OHLCV bar fetch
+    ├── api_client.py                   # POST to backend, retry logic, local buffer
+    ├── models.py                       # Pydantic data models
+    ├── scheduler.py                    # APScheduler 5-minute interval
+    ├── logger.py                       # File + console logging
     └── requirements.txt
 ```
 
@@ -126,6 +206,20 @@ uvicorn app.main:app --reload --port 8000
 API: http://localhost:8000  
 Swagger UI: http://localhost:8000/docs
 
+### MT5 Collector (Windows only)
+
+Requires MetaTrader5 installed and a broker account (Vantage, ICMarkets, or any MetaQuotes-compatible broker).
+
+```bat
+cd mt5_collector
+python -m venv mt5env
+mt5env\Scripts\activate
+pip install -r requirements.txt
+:: Copy .env.example to .env and fill in MT5 credentials and SIGNAL_API_KEY
+python collector.py --once    :: single run to verify connection
+python collector.py           :: start 5-minute scheduler
+```
+
 ---
 
 ## Environment Variables
@@ -138,7 +232,20 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 **`backend/.env`**
 ```
 FRONTEND_URL=http://localhost:3000
+ANTHROPIC_API_KEY=sk-ant-...        # required for AI Chat
+SIGNAL_API_KEY=<random 32-byte hex> # required for signal feed auth
 ```
+
+**`mt5_collector/.env`**
+```
+MT5_LOGIN=...
+MT5_PASSWORD=...
+MT5_SERVER=...
+API_URL=https://your-hf-space.hf.space
+SIGNAL_API_KEY=<same key as backend>
+```
+
+Generate a key with: `openssl rand -hex 32`
 
 ---
 
@@ -159,6 +266,10 @@ FRONTEND_URL=http://localhost:3000
 | `POST` | `/api/market/fetch` | Fetch market data via yfinance |
 | `GET` | `/api/market/commodities` | List available commodity symbols |
 | `POST` | `/api/data/upload-csv` | Upload CSV dataset |
+| `POST` | `/api/signals/feed` | Ingest OHLCV bars from MT5 collector (API key required) |
+| `GET` | `/api/signals/latest` | Return all active signals (optional `?symbol=` / `?signal_type=`) |
+| `GET` | `/api/signals/{symbol}` | Latest signal for a specific instrument |
+| `GET` | `/api/signals/health` | Collector status, bar counts, active signal count |
 
 ---
 
@@ -397,6 +508,7 @@ The Signal Health panel surfaces live diagnostics from the pipeline run:
 | Seasonality | `/seasonality` | ✅ Active |
 | Correlation | `/correlation` | ✅ Active |
 | AI Chat | `/chat` | ✅ Active |
+| Signals | `/signals` | ✅ Active |
 
 ---
 
