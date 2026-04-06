@@ -1,13 +1,11 @@
-import json
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 
-from config import API_BASE_URL, API_KEY, COLLECTOR_VERSION
+from config import API_BASE_URL, API_KEY
 from logger import get_logger
-from models import MarketDataPayload, OHLCVBar
+from models import OHLCVBar, SymbolPayload
 
 logger = get_logger(__name__)
 
@@ -38,7 +36,7 @@ def check_api_health() -> bool:
         return False
 
 
-def _post_payload(payload: MarketDataPayload, timeout: float = 30.0) -> bool:
+def _post_payload(payload: SymbolPayload, timeout: float = 30.0) -> bool:
     url = f"{API_BASE_URL.rstrip('/')}{_FEED_ENDPOINT}"
     body = payload.model_dump(mode="json")
 
@@ -47,23 +45,25 @@ def _post_payload(payload: MarketDataPayload, timeout: float = 30.0) -> bool:
             resp = httpx.post(url, json=body, headers=_headers(), timeout=timeout)
             if resp.status_code in (200, 201, 202):
                 logger.info(
-                    "POST %s — status=%d bars=%d",
+                    "POST %s — symbol=%s status=%d bars=%d",
                     _FEED_ENDPOINT,
+                    payload.symbol,
                     resp.status_code,
                     len(payload.bars),
                 )
                 return True
             logger.warning(
-                "POST attempt %d/%d — status=%d body=%s",
+                "POST attempt %d/%d — symbol=%s status=%d body=%s",
                 attempt,
                 3,
+                payload.symbol,
                 resp.status_code,
                 resp.text[:200],
             )
         except httpx.TimeoutException:
-            logger.warning("POST attempt %d/%d — timeout after %.0fs", attempt, 3, timeout)
+            logger.warning("POST attempt %d/%d — symbol=%s timeout after %.0fs", attempt, 3, payload.symbol, timeout)
         except Exception as exc:
-            logger.warning("POST attempt %d/%d — error: %s", attempt, 3, exc)
+            logger.warning("POST attempt %d/%d — symbol=%s error: %s", attempt, 3, payload.symbol, exc)
 
         if attempt < 3:
             backoff = 2 ** attempt
@@ -73,11 +73,11 @@ def _post_payload(payload: MarketDataPayload, timeout: float = 30.0) -> bool:
     return False
 
 
-def _buffer_payload(payload: MarketDataPayload) -> None:
+def _buffer_payload(payload: SymbolPayload) -> None:
     BUFFER_FILE.parent.mkdir(exist_ok=True)
     with BUFFER_FILE.open("a", encoding="utf-8") as fh:
         fh.write(payload.model_dump_json() + "\n")
-    logger.info("Payload buffered locally (%d bars)", len(payload.bars))
+    logger.info("Payload buffered locally — symbol=%s bars=%d", payload.symbol, len(payload.bars))
 
 
 def _flush_buffer() -> None:
@@ -93,7 +93,7 @@ def _flush_buffer() -> None:
 
     for line in lines:
         try:
-            payload = MarketDataPayload.model_validate_json(line)
+            payload = SymbolPayload.model_validate_json(line)
             if not _post_payload(payload):
                 remaining.append(line)
         except Exception as exc:
@@ -112,17 +112,33 @@ def send_market_data(bars: list[dict]) -> bool:
         logger.warning("send_market_data called with empty bars list")
         return False
 
-    ohlcv_bars = [OHLCVBar(**b) for b in bars]
-    payload = MarketDataPayload(
-        bars=ohlcv_bars,
-        collector_version=COLLECTOR_VERSION,
-        sent_at=datetime.now(timezone.utc),
-    )
-
     _flush_buffer()
 
-    success = _post_payload(payload)
-    if not success:
-        _buffer_payload(payload)
+    grouped: dict[str, list[dict]] = {}
+    for bar in bars:
+        grouped.setdefault(bar["symbol"], []).append(bar)
 
-    return success
+    all_success = True
+    for symbol, symbol_bars in grouped.items():
+        ohlcv_bars = [
+            OHLCVBar(
+                timestamp=b["timestamp"],
+                open=b["open"],
+                high=b["high"],
+                low=b["low"],
+                close=b["close"],
+                volume=b["volume"],
+            )
+            for b in symbol_bars
+        ]
+        payload = SymbolPayload(
+            symbol=symbol,
+            timeframe=symbol_bars[0].get("timeframe", "M5"),
+            bars=ohlcv_bars,
+        )
+        success = _post_payload(payload)
+        if not success:
+            _buffer_payload(payload)
+            all_success = False
+
+    return all_success

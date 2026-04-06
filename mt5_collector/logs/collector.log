@@ -154,3 +154,60 @@
 2026-04-05 16:19:40 | WARNING  | scheduler | Cycle complete — data buffered (API unreachable)
 2026-04-05 16:19:40 | INFO     | mt5_client | MT5 connection closed
 2026-04-05 16:19:40 | INFO     | collector | Done.
+2026-04-06 02:35:06 | INFO     | collector | ═══════════════════════════════════════
+2026-04-06 02:35:06 | INFO     | collector | CommodityIQ MT5 Collector v1.0.0
+2026-04-06 02:35:06 | INFO     | collector | Login=5048909818  Server=MetaQuotes-Demo
+2026-04-06 02:35:06 | INFO     | collector | API=https://mugegu455-commodityiq-api.hf.space
+2026-04-06 02:35:06 | INFO     | collector | Instruments=['XAUUSD']
+2026-04-06 02:35:06 | INFO     | collector | Bars/request=100
+2026-04-06 02:35:06 | INFO     | collector | ═══════════════════════════════════════
+2026-04-06 02:35:06 | INFO     | collector | Checking MT5 connection…
+2026-04-06 02:35:06 | INFO     | mt5_client | MT5 init attempt 1/3 — server=MetaQuotes-Demo login=5048909818
+2026-04-06 02:35:06 | INFO     | mt5_client | MT5 connected — account=5048909818 server=MetaQuotes-Demo balance=10000.00
+2026-04-06 02:35:06 | INFO     | collector | Checking API health…
+2026-04-06 02:35:07 | INFO     | api_client | API health check OK — https://mugegu455-commodityiq-api.hf.space/health
+2026-04-06 02:35:07 | INFO     | collector | Running single collection cycle (--once mode)
+2026-04-06 02:35:07 | INFO     | scheduler | ─── Cycle start ─── instruments=['XAUUSD']
+2026-04-06 02:35:07 | DEBUG    | mt5_client | Fetched 100 bars for XAUUSD
+2026-04-06 02:35:07 | INFO     | scheduler | Cycle collected 100 bars across 1 instruments (skipped: none)
+2026-04-06 02:35:07 | INFO     | api_client | Flushing 2 buffered payloads…
+2026-04-06 02:35:08 | WARNING  | api_client | POST attempt 1/3 — status=422 body={"detail":[{"type":"missing","loc":["body","symbol"],"msg":"Field required","input":{"bars":[{"symbol":"XAUUSD","timestamp":"2026-04-02T14:40:00Z","open":4608.7,"high":4608.73,"low":4592.93,"close":46
+2026-04-06 02:35:08 | INFO     | api_client | Retrying in 2s…
+2026-04-06 02:35:10 | WARNING  | api_client | POST attempt 2/3 — status=422 body={"detail":[{"type":"missing","loc":["body","symbol"],"msg":"Field required","input":{"bars":[{"symbol":"XAUUSD","timestamp":"2026-04-02T14:40:00Z","open":4608.7,"high":4608.73,"low":4592.93,"close":46
+2026-04-06 02:35:10 | INFO     | api_client | Retrying in 4s…
+2026-04-06 02:35:15 | WARNING  | api_client | POST attempt 3/3 — status=422 body={"detail":[{"type":"missing","loc":["body","symbol"],"msg":"Field required","input":{"bars":[{"symbol":"XAUUSD","timestamp":"2026-04-02T14:40:00Z","open":4608.7,"high":4608.73,"low":4592.93,"close":46
+2026-04-06 02:35:15 | WARNING  | api_client | POST attempt 1/3 — status=422 body={"detail":[{"type":"missing","loc":["body","symbol"],"msg":"Field required","input":{"bars":[{"symbol":"XAUUSD","timestamp":"2026-04-02T14:40:00Z","open":4608.7,"high":4608.73,"low":4592.93,"close":46
+2026-04-06 02:35:15 | INFO     | api_client | Retrying in 2s…
+2026-04-06 02:35:18 | WARNING  | api_client | POST attempt 2/3 — status=422 body={"detail":[{"type":"missing","loc":["body","symbol"],"msg":"Field required","input":{"bars":[{"symbol":"XAUUSD","timestamp":"2026-04-02T14:40:00Z","open":4608.7,"high":4608.73,"low":4592.93,"close":46
+2026-04-06 02:35:18 | INFO     | api_client | Retrying in 4s…
+2026-04-06 02:35:22 | WARNING  | api_client | POST attempt 3/3 — status=422 body={"detail":[{"type":"missing","loc":["body","symbol"],"msg":"Field required","input":{"bars":[{"symbol":"XAUUSD","timestamp":"2026-04-02T14:40:00Z","open":4608.7,"high":4608.73,"low":4592.93,"close":46
+2026-04-06 02:35:22 | WARNING  | api_client | 2 payloads still buffered after flush attempt
+2026-04-06 02:35:23 | WARNING  | api_client | POST attempt 1/3 — status=422 body={"detail":[{"type":"missing","loc":["body","symbol"],"msg":"Field required","input":{"bars":[{"symbol":"XAUUSD","timestamp":"2026-04-02T17:20:00Z","open":4660.55,"high":4675.68,"low":4658.93,"close":4
+2026-04-06 02:35:23 | INFO     | api_client | Retrying in 2s…
+2026-04-06 02:35:25 | WARNING  | api_client | POST attempt 2/3 — status=422 body={"detail":[{"type":"missing","loc":["body","symbol"],"msg":"Field required","input":{"bars":[{"symbol":"XAUUSD","timestamp":"2026-04-02T17:20:00Z","open":4660.55,"high":4675.68,"low":4658.93,"close":4
+2026-04-06 02:35:25 | INFO     | api_client | Retrying in 4s…
+2026-04-06 02:35:30 | WARNING  | api_client | POST attempt 3/3 — status=422 body={"detail":[{"type":"missing","loc":["body","symbol"],"msg":"Field required","input":{"bars":[{"symbol":"XAUUSD","timestamp":"2026-04-02T17:20:00Z","open":4660.55,"high":4675.68,"low":4658.93,"close":4
+2026-04-06 02:35:30 | INFO     | api_client | Payload buffered locally (100 bars)
+2026-04-06 02:35:30 | WARNING  | scheduler | Cycle complete — data buffered (API unreachable)
+2026-04-06 02:35:30 | INFO     | mt5_client | MT5 connection closed
+2026-04-06 02:35:30 | INFO     | collector | Done.
+2026-04-06 02:43:25 | INFO     | collector | ═══════════════════════════════════════
+2026-04-06 02:43:25 | INFO     | collector | CommodityIQ MT5 Collector v1.0.0
+2026-04-06 02:43:25 | INFO     | collector | Login=5048909818  Server=MetaQuotes-Demo
+2026-04-06 02:43:25 | INFO     | collector | API=https://mugegu455-commodityiq-api.hf.space
+2026-04-06 02:43:25 | INFO     | collector | Instruments=['XAUUSD']
+2026-04-06 02:43:25 | INFO     | collector | Bars/request=100
+2026-04-06 02:43:25 | INFO     | collector | ═══════════════════════════════════════
+2026-04-06 02:43:25 | INFO     | collector | Checking MT5 connection…
+2026-04-06 02:43:25 | INFO     | mt5_client | MT5 init attempt 1/3 — server=MetaQuotes-Demo login=5048909818
+2026-04-06 02:43:25 | INFO     | mt5_client | MT5 connected — account=5048909818 server=MetaQuotes-Demo balance=10000.00
+2026-04-06 02:43:25 | INFO     | collector | Checking API health…
+2026-04-06 02:43:25 | INFO     | api_client | API health check OK — https://mugegu455-commodityiq-api.hf.space/health
+2026-04-06 02:43:25 | INFO     | collector | Running single collection cycle (--once mode)
+2026-04-06 02:43:25 | INFO     | scheduler | ─── Cycle start ─── instruments=['XAUUSD']
+2026-04-06 02:43:25 | DEBUG    | mt5_client | Fetched 100 bars for XAUUSD
+2026-04-06 02:43:25 | INFO     | scheduler | Cycle collected 100 bars across 1 instruments (skipped: none)
+2026-04-06 02:43:26 | INFO     | api_client | POST /api/signals/feed — symbol=XAUUSD status=200 bars=100
+2026-04-06 02:43:26 | INFO     | scheduler | Cycle complete — data sent successfully
+2026-04-06 02:43:26 | INFO     | mt5_client | MT5 connection closed
+2026-04-06 02:43:26 | INFO     | collector | Done.
