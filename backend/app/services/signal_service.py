@@ -33,6 +33,7 @@ from app.models.signal import (
 )
 from app.services.hybrid_forecast import HybridForecaster
 from app.services.smc_engine import SMCEngine
+from app.services import supabase_client
 
 logger = logging.getLogger("commodityiq.signals")
 
@@ -76,6 +77,7 @@ class SignalService:
             self._last_received[sym] = datetime.utcnow()
 
         asyncio.create_task(self._generate_signal(sym, payload.timeframe))
+        asyncio.create_task(self._track_outcomes(sym))
 
         return FeedResponse(
             status="ok",
@@ -172,6 +174,9 @@ class SignalService:
                 f"[{symbol}] Signal: {signal.signal_type} conf={signal.confidence:.2f} "
                 f"RR={signal.risk_reward_ratio:.2f}"
             )
+
+            # Persist to Supabase in the background
+            asyncio.create_task(self._persist_signal(signal))
 
         except Exception as exc:
             logger.error(f"[{symbol}] Signal generation failed: {exc}", exc_info=True)
@@ -353,6 +358,91 @@ class SignalService:
                 "tft_smc_agree":    agree,
             },
         )
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Supabase persistence
+    # ──────────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    async def _persist_signal(signal: Signal) -> None:
+        """Convert Signal → dict and INSERT into Supabase signals_history."""
+        record = {
+            "symbol":            signal.symbol,
+            "signal_type":       signal.signal_type.value,
+            "confidence":        signal.confidence,
+            "entry_price":       signal.entry_price,
+            "take_profit":       signal.take_profit,
+            "stop_loss":         signal.stop_loss,
+            "risk_reward_ratio": signal.risk_reward_ratio,
+            "tft_direction":     signal.tft_direction,
+            "smc_bias":          signal.smc_bias,
+            "generated_at":      signal.generated_at.isoformat(),
+            "valid_until":       signal.valid_until.isoformat(),
+            "outcome":           "pending",
+            "metadata":          signal.metadata,
+        }
+        await supabase_client.insert_signal(record)
+
+    async def _track_outcomes(self, symbol: str) -> None:
+        """
+        Check all 'pending' Supabase rows for `symbol` against the latest
+        close price.  Updates outcome to tp_hit / sl_hit / expired.
+        Runs as a background task — never blocks ingest.
+        """
+        try:
+            async with self._lock:
+                bars = list(self._store.get(symbol, []))
+            if not bars:
+                return
+
+            current_price = float(bars[-1].close)
+            now = datetime.utcnow()
+
+            pending = await supabase_client.fetch_pending_signals()
+            pending = [r for r in pending if r.get("symbol") == symbol]
+
+            for row in pending:
+                rid         = row.get("id")
+                sig_type    = row.get("signal_type", "")
+                tp          = row.get("take_profit")
+                sl          = row.get("stop_loss")
+                valid_until_str = row.get("valid_until", "")
+
+                if not rid or tp is None or sl is None:
+                    continue
+
+                # Check expiry first
+                try:
+                    valid_until = datetime.fromisoformat(valid_until_str.replace("Z", "+00:00"))
+                    if valid_until.tzinfo:
+                        from datetime import timezone
+                        now_aware = now.replace(tzinfo=timezone.utc)
+                    else:
+                        now_aware = now
+                    if now_aware > valid_until.replace(tzinfo=None) if not valid_until.tzinfo else now_aware > valid_until:
+                        await supabase_client.update_outcome(rid, "expired", current_price, now.isoformat())
+                        continue
+                except (ValueError, AttributeError):
+                    pass
+
+                outcome = None
+                if sig_type == "BUY":
+                    if current_price >= tp:
+                        outcome = "tp_hit"
+                    elif current_price <= sl:
+                        outcome = "sl_hit"
+                elif sig_type == "SELL":
+                    if current_price <= tp:
+                        outcome = "tp_hit"
+                    elif current_price >= sl:
+                        outcome = "sl_hit"
+
+                if outcome:
+                    await supabase_client.update_outcome(rid, outcome, current_price, now.isoformat())
+                    logger.info(f"[{symbol}] Outcome tracked: {outcome} @ {current_price}")
+
+        except Exception as exc:
+            logger.warning(f"[{symbol}] Outcome tracking error: {exc}")
 
     # ──────────────────────────────────────────────────────────────────────────
     # Helpers

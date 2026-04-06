@@ -1,8 +1,11 @@
 "use client";
 
-import { Radio } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { History, Radio } from "lucide-react";
 import { useSignals } from "./hooks/useSignals";
 import ConnectionStatus from "./components/ConnectionStatus";
+import NotificationToggle, { sendSignalNotification, useNotificationPermission } from "./components/NotificationToggle";
 import SignalCard from "./components/SignalCard";
 import SignalCardSkeleton from "./components/SignalCardSkeleton";
 import type { Signal } from "./types";
@@ -73,6 +76,25 @@ function StatsBar({ signals }: { signals: Signal[] }) {
 
 export default function SignalsPage() {
   const { signals, loading, error, lastUpdated, isStale, refetch } = useSignals();
+  const [notifEnabled, setNotifEnabled] = useState(false);
+  const { register }                    = useNotificationPermission();
+  const prevSymbolsRef = useRef<Set<string>>(new Set());
+
+  // Register service worker on mount
+  useEffect(() => { register(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fire notification when a new actionable signal appears
+  useEffect(() => {
+    if (!notifEnabled || loading) return;
+    signals.forEach((s) => {
+      const key = `${s.symbol}:${s.signal_type}:${s.generated_at}`;
+      if (prevSymbolsRef.current.has(key)) return;
+      prevSymbolsRef.current.add(key);
+      if (s.signal_type !== "WAIT" && s.confidence >= 0.7) {
+        sendSignalNotification(s.symbol, s.signal_type, s.confidence, s.entry_price);
+      }
+    });
+  }, [signals, notifEnabled, loading]);
 
   const hasSignals = signals.length > 0;
 
@@ -93,13 +115,23 @@ export default function SignalsPage() {
           </div>
         </div>
 
-        <ConnectionStatus
-          loading={loading}
-          error={error}
-          lastUpdated={lastUpdated}
-          isStale={isStale}
-          onRefresh={refetch}
-        />
+        <div className="flex items-center gap-2">
+          <NotificationToggle enabled={notifEnabled} onChange={setNotifEnabled} />
+          <Link
+            href="/signals/history"
+            className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+          >
+            <History className="w-3 h-3" />
+            History
+          </Link>
+          <ConnectionStatus
+            loading={loading}
+            error={error}
+            lastUpdated={lastUpdated}
+            isStale={isStale}
+            onRefresh={refetch}
+          />
+        </div>
       </div>
 
       {/* ── Stale warning ── */}

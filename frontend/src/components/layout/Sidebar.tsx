@@ -13,6 +13,7 @@ import {
   Link2,
   Bot,
   Radio,
+  History as HistoryIcon,
   ChevronLeft,
   ChevronRight,
   BarChart2,
@@ -72,6 +73,12 @@ const navItems = [
     href: "/signals",
     icon: Radio,
     description: "Live trading signals",
+  },
+  {
+    label: "Sig. History",
+    href: "/signals/history",
+    icon: HistoryIcon,
+    description: "Signal history & stats",
   },
 ];
 
