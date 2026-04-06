@@ -44,6 +44,12 @@ SIGNAL_VALIDITY_MINUTES = 15    # valid_until = generated_at + 15 min
 RR_MINIMUM = 1.5                # minimum risk:reward; below this → WAIT
 SL_BUFFER_PCT = 0.002           # 0.2 % buffer beyond the zone boundary
 
+# ATR-based TP/SL parameters (Hybrid ATR + SMC, tuned for M5)
+ATR_PERIOD          = 14   # lookback for ATR calculation
+ATR_SL_MULTIPLIER   = 1.0  # SL fallback: entry ± 1.0 × ATR
+ATR_TP_MULTIPLIER   = 2.0  # TP fallback: entry ± 2.0 × ATR — guarantees RR ≥ 2.0
+MAX_ATR_DISTANCE    = 3.0  # SMC zone ignored if abs(zone − entry) > ATR × 3.0
+
 
 class SignalService:
     def __init__(self) -> None:
@@ -312,18 +318,54 @@ class SignalService:
         else:
             raw_signal = SignalType.WAIT
 
-        # ── TP / SL calculation ──────────────────────────────────────────────
+        # ── Hybrid ATR + SMC TP/SL ───────────────────────────────────
+        atr = self._calculate_atr(df, ATR_PERIOD)
+        if atr <= 0:
+            atr = current_price * 0.01  # 1% price fallback when < 14 bars available
         buf = current_price * SL_BUFFER_PCT
+        max_dist = atr * MAX_ATR_DISTANCE
+        sl_source = "atr"
+        tp_source = "atr"
 
         if raw_signal == SignalType.BUY:
-            sl = (nearest_support  - buf) if nearest_support  is not None else current_price * 0.99
-            tp = nearest_resistance        if nearest_resistance is not None else current_price * 1.02
+            atr_tp = current_price + atr * ATR_TP_MULTIPLIER
+            atr_sl = current_price - atr * ATR_SL_MULTIPLIER
+
+            # TP: use SMC resistance if within MAX_ATR_DISTANCE × ATR
+            if nearest_resistance is not None and abs(nearest_resistance - current_price) <= max_dist:
+                tp = nearest_resistance
+                tp_source = "smc"
+            else:
+                tp = atr_tp
+
+            # SL: use SMC support if within MAX_ATR_DISTANCE × ATR
+            if nearest_support is not None and abs(current_price - nearest_support) <= max_dist:
+                sl = nearest_support - buf
+                sl_source = "smc"
+            else:
+                sl = atr_sl
+
         elif raw_signal == SignalType.SELL:
-            sl = (nearest_resistance + buf) if nearest_resistance is not None else current_price * 1.01
-            tp = nearest_support            if nearest_support  is not None else current_price * 0.98
+            atr_tp = current_price - atr * ATR_TP_MULTIPLIER
+            atr_sl = current_price + atr * ATR_SL_MULTIPLIER
+
+            # TP: use SMC support if within MAX_ATR_DISTANCE × ATR
+            if nearest_support is not None and abs(current_price - nearest_support) <= max_dist:
+                tp = nearest_support
+                tp_source = "smc"
+            else:
+                tp = atr_tp
+
+            # SL: use SMC resistance if within MAX_ATR_DISTANCE × ATR
+            if nearest_resistance is not None and abs(nearest_resistance - current_price) <= max_dist:
+                sl = nearest_resistance + buf
+                sl_source = "smc"
+            else:
+                sl = atr_sl
+
         else:
-            sl = current_price * 0.99
-            tp = current_price * 1.01
+            tp = current_price + atr * 1.0
+            sl = current_price - atr * 1.0
 
         # ── Risk:Reward gate ─────────────────────────────────────────────────
         risk   = abs(current_price - sl)
@@ -356,6 +398,10 @@ class SignalService:
                 "tft_cached":       bool(self._tft_cache.get(symbol)),
                 "bars_analyzed":    len(df),
                 "tft_smc_agree":    agree,
+                "atr":              round(atr, 5),
+                "atr_period":       ATR_PERIOD,
+                "sl_source":        sl_source,
+                "tp_source":        tp_source,
             },
         )
 
@@ -447,6 +493,27 @@ class SignalService:
     # ──────────────────────────────────────────────────────────────────────────
     # Helpers
     # ──────────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _calculate_atr(df: pd.DataFrame, period: int = 14) -> float:
+        """
+        Average True Range over `period` bars.
+        Returns 0.0 if fewer than `period` bars are available so the caller
+        can apply a percentage-based fallback.
+        """
+        if len(df) < period:
+            return 0.0
+        high  = df["high"]
+        low   = df["low"]
+        close = df["close"]
+
+        tr1 = high - low
+        tr2 = (high - close.shift(1)).abs()
+        tr3 = (low  - close.shift(1)).abs()
+
+        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr = true_range.rolling(window=period, min_periods=period).mean().iloc[-1]
+        return float(atr) if not pd.isna(atr) else 0.0
 
     @staticmethod
     def _bars_to_df(bars: List[OHLCVBar]) -> pd.DataFrame:

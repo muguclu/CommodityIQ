@@ -126,7 +126,7 @@ async def fetch_history(
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             headers = {**_headers(), "Prefer": "count=exact"}
             r = await client.get(_base(), headers=headers, params=params)
-            if r.status_code != 200:
+            if r.status_code not in (200, 206):
                 logger.warning("Supabase fetch failed %s: %s", r.status_code, r.text[:200])
                 return []
             return r.json()
@@ -146,11 +146,43 @@ async def fetch_pending_signals() -> List[Dict[str, Any]]:
                 headers=_headers(),
                 params={"outcome": "eq.pending", "limit": "1000"},
             )
-            if r.status_code != 200:
+            if r.status_code not in (200, 206):
                 return []
             return r.json()
     except Exception as exc:
         logger.warning("Supabase fetch pending error: %s", exc)
+        return []
+
+
+async def fetch_closed_signals(
+    symbol:    Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date:   Optional[str] = None,
+    limit:     int           = 500,
+) -> List[Dict[str, Any]]:
+    """Return all settled (non-pending) rows with full column set."""
+    if not _is_configured():
+        return []
+    params: Dict[str, str] = {
+        "outcome": "neq.pending",
+        "order":   "generated_at.desc",
+        "limit":   str(min(limit, 1000)),
+    }
+    if symbol:
+        params["symbol"] = f"eq.{symbol.upper()}"
+    if from_date:
+        params["generated_at"] = f"gte.{from_date}"
+    if to_date:
+        params["and"] = f"(generated_at.lte.{to_date})"
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            r = await client.get(_base(), headers=_headers(), params=params)
+            if r.status_code not in (200, 206):
+                logger.warning("Supabase closed fetch failed %s", r.status_code)
+                return []
+            return r.json()
+    except Exception as exc:
+        logger.warning("Supabase closed fetch error: %s", exc)
         return []
 
 
@@ -172,7 +204,7 @@ async def fetch_stats() -> List[Dict[str, Any]]:
                     "limit":  "1000",
                 },
             )
-            if r.status_code != 200:
+            if r.status_code not in (200, 206):
                 return []
             return r.json()
     except Exception as exc:

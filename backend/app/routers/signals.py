@@ -25,8 +25,9 @@ from app.models.signal import (
     SignalResponse,
     SignalType,
 )
+from app.models.backtest import AccuracyReport
 from app.models.signal_history import HistoryResponse, SignalHistoryRecord, StatsResponse, SymbolStats
-from app.services import supabase_client
+from app.services import backtest_service, supabase_client
 from app.services.signal_service import signal_service
 
 logger = logging.getLogger("commodityiq.signals.router")
@@ -173,6 +174,15 @@ async def signals_health() -> dict:
     - which symbols have a cached TFT result
     """
     return await signal_service.health_info()
+
+
+@router.get(
+    "/signals/accuracy",
+    response_model=AccuracyReport,
+    summary="Overall and per-symbol signal accuracy metrics",
+)
+async def signal_accuracy() -> AccuracyReport:
+    return await backtest_service.get_accuracy_report()
 
 
 @router.get(

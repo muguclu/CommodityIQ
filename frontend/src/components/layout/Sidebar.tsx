@@ -80,6 +80,12 @@ const navItems = [
     icon: HistoryIcon,
     description: "Signal history & stats",
   },
+  {
+    label: "Performance",
+    href: "/signals/performance",
+    icon: BarChart2,
+    description: "Backtest & accuracy",
+  },
 ];
 
 export default function Sidebar() {
